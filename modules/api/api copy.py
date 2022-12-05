@@ -6,8 +6,9 @@ from threading import Lock
 from io import BytesIO
 from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from secrets import compare_digest
+from datetime import datetime, timedelta
 
 import modules.shared as shared
 from modules import sd_samplers, deepbooru
@@ -18,6 +19,23 @@ from PIL import PngImagePlugin,Image
 from modules.sd_models import checkpoints_list
 from modules.realesrgan_model import get_realesrgan_models
 from typing import List
+
+from passlib.context import CryptContext
+from .database import engine, SessionLocal
+from sqlalchemy.orm import Session
+import sqlalchemy.exc as exc
+from . import models
+
+# auth
+from jose import JWTError, jwt
+
+SECRET_KEY = "secret_api_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+models.Base.metadata.create_all(bind=engine)
+bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def upscaler_to_index(name: str):
     try:
@@ -63,7 +81,13 @@ def encode_pil_to_base64(image):
         bytes_data = output_bytes.getvalue()
     return base64.b64encode(bytes_data)
 
-
+def get_db():
+    try:
+        db = SessionLocal()
+        yield db
+    finally:
+        db.close()
+    
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
         if shared.cmd_opts.api_auth:
@@ -96,7 +120,65 @@ class Api:
         self.add_api_route("/sdapi/v1/prompt-styles", self.get_promp_styles, methods=["GET"], response_model=List[PromptStyleItem])
         self.add_api_route("/sdapi/v1/artist-categories", self.get_artists_categories, methods=["GET"], response_model=List[str])
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
+        self.add_api_route("/create/user", self.create_new_user, methods=["POST"], response_model=CreateUserResponse)
+        self.add_api_route("/get/token", self.login_for_access_token, methods=["POST"])
 
+
+    def get_password_hash(self, password):
+        return bcrypt_context.hash(password)
+
+    def verify_password(self, plain_password, hashed_password):
+        return bcrypt_context.verify(plain_password, hashed_password)
+
+    def authenticate_user(self, username, password, db):
+        user = db.query(models.UsersDB)\
+            .filter(models.UsersDB.username == username).first()
+        
+        if not user:
+            return False
+        if not self.verify_password(password, user.hash_password):
+            return False
+        return user
+    
+    def login_for_access_token(self, form_data: OAuth2PasswordRequestForm = Depends(),
+                                 db: Session = Depends(get_db)):
+        user = self.authenticate_user(form_data.username, form_data.password, db)
+        if not user:
+            raise HTTPException(status_code=404, detail="Incorrect username or password")
+        token_expires = timedelta(minutes=20)
+        token = self.create_access_token(username=user.username, user_id=user.id, expires_delta=token_expires)
+        return {"access_token": token, "token_type": "bearer"}
+
+    def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
+        create_user_model = models.UsersDB()
+        create_user_model.email = create_user.email
+        create_user_model.username = create_user.username
+        
+        hash_password = self.get_password_hash(create_user.password)
+        
+        create_user_model.hash_password = hash_password
+        create_user_model.is_active = True
+        print(f"Create user: {create_user_model.username}")
+        db.add(create_user_model)
+        try:
+            db.commit()
+        except exc.IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="User already exist")
+
+        return {"message": f"User {create_user.username} created successfully"}
+    
+    def create_access_token(self, username: str, user_id: int, 
+                            expires_delta: Optional[timedelta] = None):
+        to_encode = {"username": username, "user_id": user_id}
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=15)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        return encoded_jwt
+    
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:
             return self.app.add_api_route(path, endpoint, dependencies=[Depends(self.auth)], **kwargs)
