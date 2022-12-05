@@ -36,6 +36,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 models.Base.metadata.create_all(bind=engine)
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_bearer 
 
 def upscaler_to_index(name: str):
     try:
@@ -121,7 +122,7 @@ class Api:
         self.add_api_route("/sdapi/v1/artist-categories", self.get_artists_categories, methods=["GET"], response_model=List[str])
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
         self.add_api_route("/create/user", self.create_new_user, methods=["POST"], response_model=CreateUserResponse)
-        self.add_api_route("/get/token", self.login_for_access_token, methods=["POST"])
+        self.add_api_route("/get_jwt_token", self.login_for_access_token, methods=["POST"])
 
 
     def get_password_hash(self, password):
@@ -130,9 +131,9 @@ class Api:
     def verify_password(self, plain_password, hashed_password):
         return bcrypt_context.verify(plain_password, hashed_password)
 
-    def authenticate_user(self, username, password, db):
+    def authenticate_user(self, email, password, db):
         user = db.query(models.UsersDB)\
-            .filter(models.UsersDB.username == username).first()
+            .filter(models.UsersDB.email == email).first()
         
         if not user:
             return False
@@ -140,25 +141,28 @@ class Api:
             return False
         return user
     
+    
     def login_for_access_token(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
-        user = self.authenticate_user(form_data.username, form_data.password, db)
+        user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
             raise HTTPException(status_code=404, detail="Incorrect username or password")
         token_expires = timedelta(minutes=20)
-        token = self.create_access_token(username=user.username, user_id=user.id, expires_delta=token_expires)
+        token = self.create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
         return {"access_token": token, "token_type": "bearer"}
+
+    # def get_current_user(self, token: str = Depends(oauth2_bearer), db: Session = Depends(get_db)):
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email
-        create_user_model.username = create_user.username
+        create_user_model.email = create_user.username
         
         hash_password = self.get_password_hash(create_user.password)
         
         create_user_model.hash_password = hash_password
         create_user_model.is_active = True
-        print(f"Create user: {create_user_model.username}")
+        print(f"Create user: {create_user_model.email}")
         db.add(create_user_model)
         try:
             db.commit()
@@ -168,9 +172,9 @@ class Api:
 
         return {"message": f"User {create_user.username} created successfully"}
     
-    def create_access_token(self, username: str, user_id: int, 
+    def create_access_token(self, email: str, user_id: int, 
                             expires_delta: Optional[timedelta] = None):
-        to_encode = {"username": username, "user_id": user_id}
+        to_encode = {"email": email, "user_id": user_id}
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
