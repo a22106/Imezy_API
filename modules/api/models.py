@@ -6,6 +6,10 @@ from inflection import underscore
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img
 from modules.shared import sd_upscalers, opts, parser
 from typing import Dict, List
+from datetime import datetime
+
+from .database import Base, SessionLocal, engine
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
 
 API_NOT_ALLOWED = [
     "self",
@@ -240,3 +244,20 @@ class ArtistItem(BaseModel):
     score: float = Field(title="Score")
     category: str = Field(title="Category")
 
+class CreateUserResponse(BaseModel):
+    username: str = Field("piushwang", title="Username")
+    email: Optional[str] = Field("bk22106@gmail.com", title="Email")
+    password: str = Field("1234", title="Password")
+    # created_date: Optional[datetime] = Field(datetime.now(), title="Created Date")
+
+
+# databases
+class UsersDB(Base):
+    __tablename__  = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hash_password = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_date = Column(DateTime, default=datetime.utcnow)
