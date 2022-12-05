@@ -5,7 +5,7 @@ import uvicorn
 from threading import Lock
 from io import BytesIO
 from gradio.processing_utils import decode_base64_to_file
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from secrets import compare_digest
 from datetime import datetime, timedelta
@@ -28,6 +28,7 @@ from . import models
 
 # auth
 from jose import JWTError, jwt
+from .auth import get_current_user, get_user_exception, oauth2_bearer
 
 SECRET_KEY = "secret_api_key"
 ALGORITHM = "HS256"
@@ -35,8 +36,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 models.Base.metadata.create_all(bind=engine)
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-oauth2_bearer 
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
+
 
 def upscaler_to_index(name: str):
     try:
@@ -121,9 +122,27 @@ class Api:
         self.add_api_route("/sdapi/v1/prompt-styles", self.get_promp_styles, methods=["GET"], response_model=List[PromptStyleItem])
         self.add_api_route("/sdapi/v1/artist-categories", self.get_artists_categories, methods=["GET"], response_model=List[str])
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
-        self.add_api_route("/create/user", self.create_new_user, methods=["POST"], response_model=CreateUserResponse)
-        self.add_api_route("/get_jwt_token", self.login_for_access_token, methods=["POST"])
+        self.add_api_route("/user/create", self.create_new_user, methods=["POST"], response_model=CreateUserResponse)
+        self.add_api_route("/user/get_jwt_token", self.login_for_access_token, methods=["POST"])
+        self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"], response_model=JWTResponse)
+        self.add_api_route("/user/{user_id}", self.read_user_by_id, methods=["GET"], response_model=JWTResponse)
 
+    def read_user_by_id(self, user_id: int, 
+                        user: dict = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+        if user is None:
+            raise get_user_exception()
+        user_info = db.query(UsersDB).filter(UsersDB.id == user_id).filter(UsersDB.username == user["username"]).first()
+        if user_info is not None:
+            return user_info
+        raise HTTPException(status_code=404, detail="User not found")
+        
+
+    def read_all_by_user(self, user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+        if user is None:
+            raise self.get_user_exception()
+        return db.query(models.UsersDB).filter(models.UsersDB.email == user.email).all()
 
     def get_password_hash(self, password):
         return bcrypt_context.hash(password)
@@ -146,12 +165,21 @@ class Api:
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
-            raise HTTPException(status_code=404, detail="Incorrect username or password")
+            raise self.token_exception()
         token_expires = timedelta(minutes=20)
         token = self.create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
         return {"access_token": token, "token_type": "bearer"}
 
-    # def get_current_user(self, token: str = Depends(oauth2_bearer), db: Session = Depends(get_db)):
+    def get_current_user(self, token: str = Depends(oauth2_bearer)):
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username: str = payload.get("sub")
+            user_id: int = payload.get("id")
+            if username is None or user_id is None:
+                raise self.get_user_exception()
+            return {"username": username, "user_id": user_id}
+        except JWTError:
+            raise self.get_user_exception()
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         create_user_model = models.UsersDB()
@@ -182,6 +210,14 @@ class Api:
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
+        
+    def token_exception(self):
+        token_exception_response = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        return token_exception_response
     
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:

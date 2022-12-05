@@ -250,6 +250,9 @@ class CreateUserResponse(BaseModel):
     password: str = Field("1234", title="Password")
     # created_date: Optional[datetime] = Field(datetime.now(), title="Created Date")
 
+class JWTResponse(BaseModel):
+    access_token: str = Field(title="Access Token")
+    token_type: str = Field(title="Token Type")
 
 # databases
 class UsersDB(Base):
@@ -257,7 +260,7 @@ class UsersDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
+    username = Column(String, unique=True, index=True)
     hash_password = Column(String)
     is_active = Column(Boolean, default=True)
     created_date = Column(DateTime, default=datetime.utcnow)
