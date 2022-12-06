@@ -32,7 +32,7 @@ def get_current_user(token: str = Depends(oauth2_bearer)):
 def get_user_exception():
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials, user exception",
+        detail="Could not validate credentials. user exception",
         headers={"WWW-Authenticate": "Bearer"},
     )
     return credentials_exception
