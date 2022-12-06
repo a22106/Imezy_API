@@ -254,6 +254,17 @@ class JWTResponse(BaseModel):
     access_token: str = Field(title="Access Token")
     token_type: str = Field(title="Token Type")
 
+class UpdateUserRequest(BaseModel):
+    email: Optional[str] = Field
+    username: Optional[str] = Field
+    password: Optional[str] = Field
+    is_active: Optional[bool] = Field(default=True)
+
+class UpdatePasswordRequest(BaseModel):
+    email: Optional[str] = Field(title="Email")
+    old_password: str = Field(title="Old Password")
+    new_password: str = Field(title="New Password")
+
 # databases
 class UsersDB(Base):
     __tablename__  = "users"

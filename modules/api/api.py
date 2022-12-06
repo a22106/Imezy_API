@@ -26,17 +26,14 @@ from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from . import models
 
+# users
+from .users import *
+
 # auth
 from jose import JWTError, jwt
-from .auth import get_current_user, get_user_exception, oauth2_bearer
-
-SECRET_KEY = "secret_api_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from .auth import *
 
 models.Base.metadata.create_all(bind=engine)
-bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 
 
 def upscaler_to_index(name: str):
@@ -83,12 +80,12 @@ def encode_pil_to_base64(image):
         bytes_data = output_bytes.getvalue()
     return base64.b64encode(bytes_data)
 
-def get_db():
-    try:
-        db = SessionLocal()
-        yield db
-    finally:
-        db.close()
+# def get_db():
+#     try:
+#         db = SessionLocal()
+#         yield db
+#     finally:
+#         db.close()
     
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
@@ -102,6 +99,7 @@ class Api:
         self.app = app
         self.queue_lock = queue_lock
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageResponse)
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
@@ -122,33 +120,38 @@ class Api:
         self.add_api_route("/sdapi/v1/prompt-styles", self.get_promp_styles, methods=["GET"], response_model=List[PromptStyleItem])
         self.add_api_route("/sdapi/v1/artist-categories", self.get_artists_categories, methods=["GET"], response_model=List[str])
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
-        self.add_api_route("/user/create", self.create_new_user, methods=["POST"], response_model=CreateUserResponse)
-        self.add_api_route("/user/get_jwt_token", self.login_for_access_token, methods=["POST"])
-        self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"], response_model=JWTResponse)
-        self.add_api_route("/user/{user_id}", self.read_user_by_id, methods=["GET"], response_model=JWTResponse)
+
+        self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
+        self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
+        self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"])
+        self.add_api_route("/user/{user_id}", self.read_user_by_id, methods=["GET"])
+        self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
+        self.add_api_route("/user/update_password", self.update_password, methods=["POST"])
+        # self.add_api_route("/user/{user_id}", self.update_user_by_id, methods=["PUT"])
+
+    # def update_user_by_id(self, user_id: int, user: UpdateUser, db: Session = Depends(get_db)):
+    #     return update_user(db, user_id, user)
+
+    def read_all_users(self, db: Session = Depends(get_db)):
+        return read_users(db)
 
     def read_user_by_id(self, user_id: int, 
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
         if user is None:
+            print("User is None")
             raise get_user_exception()
-        user_info = db.query(UsersDB).filter(UsersDB.id == user_id).filter(UsersDB.username == user["username"]).first()
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
         raise HTTPException(status_code=404, detail="User not found")
-        
 
     def read_all_by_user(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
         if user is None:
-            raise self.get_user_exception()
-        return db.query(models.UsersDB).filter(models.UsersDB.email == user.email).all()
-
-    def get_password_hash(self, password):
-        return bcrypt_context.hash(password)
-
-    def verify_password(self, plain_password, hashed_password):
-        return bcrypt_context.verify(plain_password, hashed_password)
+            print("User is None")
+            raise get_user_exception()
+        return db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).all()
 
     def authenticate_user(self, email, password, db):
         user = db.query(models.UsersDB)\
@@ -156,41 +159,34 @@ class Api:
         
         if not user:
             return False
-        if not self.verify_password(password, user.hash_password):
+        if not verify_password(password, user.hash_password):
             return False
         return user
-    
     
     def login_for_access_token(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
-            raise self.token_exception()
-        token_expires = timedelta(minutes=20)
-        token = self.create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
+            raise token_exception()
+        token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
         return {"access_token": token, "token_type": "bearer"}
 
-    def get_current_user(self, token: str = Depends(oauth2_bearer)):
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
-            user_id: int = payload.get("id")
-            if username is None or user_id is None:
-                raise self.get_user_exception()
-            return {"username": username, "user_id": user_id}
-        except JWTError:
-            raise self.get_user_exception()
+    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db)):
+        if not update_password(db, user):
+            raise HTTPException(status_code=400, detail="Incorrect old password")
+        return {"detail": "Password updated"}
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         create_user_model = models.UsersDB()
-        create_user_model.email = create_user.email
-        create_user_model.email = create_user.username
+        create_user_model.email = create_user.email.lower()
+        create_user_model.username = create_user.username
         
-        hash_password = self.get_password_hash(create_user.password)
+        hash_password = get_password_hash(create_user.password)
         
         create_user_model.hash_password = hash_password
         create_user_model.is_active = True
-        print(f"Create user: {create_user_model.email}")
+        print(f"Creating user: {create_user_model.email}")
         db.add(create_user_model)
         try:
             db.commit()
@@ -199,25 +195,6 @@ class Api:
             raise HTTPException(status_code=400, detail="User already exist")
 
         return {"message": f"User {create_user.username} created successfully"}
-    
-    def create_access_token(self, email: str, user_id: int, 
-                            expires_delta: Optional[timedelta] = None):
-        to_encode = {"email": email, "user_id": user_id}
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=15)
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
-        
-    def token_exception(self):
-        token_exception_response = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        return token_exception_response
     
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:
@@ -232,6 +209,33 @@ class Api:
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
 
     def text2imgapi(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI):
+        populate = txt2imgreq.copy(update={ # Override __init__ params
+            "sd_model": shared.sd_model,
+            "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
+            "do_not_save_samples": True,
+            "do_not_save_grid": True
+            }
+        )
+        if populate.sampler_name:
+            populate.sampler_index = None  # prevent a warning later on
+        p = StableDiffusionProcessingTxt2Img(**vars(populate))
+        # Override object param
+
+        shared.state.begin()
+
+        with self.queue_lock:
+            processed = process_images(p)
+
+        shared.state.end()
+
+        b64images = list(map(encode_pil_to_base64, processed.images))
+
+        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
+
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
+        if not auth:
+            raise get_user_exception()
+
         populate = txt2imgreq.copy(update={ # Override __init__ params
             "sd_model": shared.sd_model,
             "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
