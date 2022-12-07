@@ -30,7 +30,6 @@ from . import models
 from .users import *
 
 # auth
-from jose import JWTError, jwt
 from .auth import *
 
 models.Base.metadata.create_all(bind=engine)
@@ -101,6 +100,7 @@ class Api:
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
         self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageResponse)
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
         self.add_api_route("/sdapi/v1/png-info", self.pnginfoapi, methods=["POST"], response_model=PNGInfoResponse)
@@ -124,13 +124,13 @@ class Api:
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
         self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"])
-        self.add_api_route("/user/{user_id}", self.read_user_by_id, methods=["GET"])
+        self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
         self.add_api_route("/user/update_password", self.update_password, methods=["POST"])
-        # self.add_api_route("/user/{user_id}", self.update_user_by_id, methods=["PUT"])
+        self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
 
-    # def update_user_by_id(self, user_id: int, user: UpdateUser, db: Session = Depends(get_db)):
-    #     return update_user(db, user_id, user)
+    def update_user_by_id(self, user_id: int, user: UpdateUserRequest, db: Session = Depends(get_db)):
+        return update_user(db, user_id, user)
 
     def read_all_users(self, db: Session = Depends(get_db)):
         return read_users(db)
@@ -185,14 +185,13 @@ class Api:
         hash_password = get_password_hash(create_user.password)
         
         create_user_model.hash_password = hash_password
-        create_user_model.is_active = True
-        print(f"Creating user: {create_user_model.email}")
+        print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
         try:
             db.commit()
         except exc.IntegrityError:
             db.rollback()
-            raise HTTPException(status_code=400, detail="User already exist")
+            raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
 
         return {"message": f"User {create_user.username} created successfully"}
     
@@ -260,6 +259,55 @@ class Api:
         return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
+        init_images = img2imgreq.init_images
+        if init_images is None:
+            raise HTTPException(status_code=404, detail="Init image not found")
+
+        mask = img2imgreq.mask
+        if mask:
+            mask = decode_base64_to_image(mask)
+
+        populate = img2imgreq.copy(update={ # Override __init__ params
+            "sd_model": shared.sd_model,
+            "sampler_name": validate_sampler_name(img2imgreq.sampler_name or img2imgreq.sampler_index),
+            "do_not_save_samples": True,
+            "do_not_save_grid": True,
+            "mask": mask
+            }
+        )
+        if populate.sampler_name:
+            populate.sampler_index = None  # prevent a warning later on
+
+        args = vars(populate)
+        args.pop('include_init_images', None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
+        p = StableDiffusionProcessingImg2Img(**args)
+
+        imgs = []
+        for img in init_images:
+            img = decode_base64_to_image(img)
+            imgs = [img] * p.batch_size
+
+        p.init_images = imgs
+
+        shared.state.begin()
+
+        with self.queue_lock:
+            processed = process_images(p)
+
+        shared.state.end()
+
+        b64images = list(map(encode_pil_to_base64, processed.images))
+
+        if not img2imgreq.include_init_images:
+            img2imgreq.init_images = None
+            img2imgreq.mask = None
+
+        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
+
+    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
+        if not auth:
+            raise get_user_exception()
+
         init_images = img2imgreq.init_images
         if init_images is None:
             raise HTTPException(status_code=404, detail="Init image not found")
