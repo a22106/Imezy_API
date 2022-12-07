@@ -41,7 +41,7 @@ def update_password(db: Session, user):
     db.refresh(user_updating)
     return user
 
-def update_user(db: Session, user):
+def update_user(db: Session, user_id, user):
     """Update the password of a user in the database.
 
     Args:
@@ -49,10 +49,13 @@ def update_user(db: Session, user):
     Returns:
         The updated user.
     """
-    user_updating = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
+    user_updating = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
 
-    user_updating.name = user.name
-    user_updating.email = user.email
+    if user.username.lower() == "String" or user.email.lower() == "String":
+        return False
+    print(f"Updating user {user.username} with email {user.email} and is_active {user.is_active} and is_admin {user.is_admin}")
+    user_updating.username = user.username
+    user_updating.email = user.email.lower()
     user_updating.is_active = user.is_active
     user_updating.is_admin = user.is_admin
     db.add(user_updating)

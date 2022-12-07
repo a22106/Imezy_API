@@ -126,7 +126,7 @@ class Api:
         self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
-        self.add_api_route("/user/update_password", self.update_password, methods=["POST"])
+        self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
 
     def update_user_by_id(self, user_id: int, user: UpdateUserRequest, db: Session = Depends(get_db)):
@@ -151,7 +151,7 @@ class Api:
         if user is None:
             print("User is None")
             raise get_user_exception()
-        return db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).all()
+        return db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).all()[0]
 
     def authenticate_user(self, email, password, db):
         user = db.query(models.UsersDB)\
@@ -235,28 +235,7 @@ class Api:
         if not auth:
             raise get_user_exception()
 
-        populate = txt2imgreq.copy(update={ # Override __init__ params
-            "sd_model": shared.sd_model,
-            "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
-            "do_not_save_samples": True,
-            "do_not_save_grid": True
-            }
-        )
-        if populate.sampler_name:
-            populate.sampler_index = None  # prevent a warning later on
-        p = StableDiffusionProcessingTxt2Img(**vars(populate))
-        # Override object param
-
-        shared.state.begin()
-
-        with self.queue_lock:
-            processed = process_images(p)
-
-        shared.state.end()
-
-        b64images = list(map(encode_pil_to_base64, processed.images))
-
-        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
+        return self.text2imgapi(txt2imgreq)
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
         init_images = img2imgreq.init_images
@@ -308,50 +287,7 @@ class Api:
         if not auth:
             raise get_user_exception()
 
-        init_images = img2imgreq.init_images
-        if init_images is None:
-            raise HTTPException(status_code=404, detail="Init image not found")
-
-        mask = img2imgreq.mask
-        if mask:
-            mask = decode_base64_to_image(mask)
-
-        populate = img2imgreq.copy(update={ # Override __init__ params
-            "sd_model": shared.sd_model,
-            "sampler_name": validate_sampler_name(img2imgreq.sampler_name or img2imgreq.sampler_index),
-            "do_not_save_samples": True,
-            "do_not_save_grid": True,
-            "mask": mask
-            }
-        )
-        if populate.sampler_name:
-            populate.sampler_index = None  # prevent a warning later on
-
-        args = vars(populate)
-        args.pop('include_init_images', None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
-        p = StableDiffusionProcessingImg2Img(**args)
-
-        imgs = []
-        for img in init_images:
-            img = decode_base64_to_image(img)
-            imgs = [img] * p.batch_size
-
-        p.init_images = imgs
-
-        shared.state.begin()
-
-        with self.queue_lock:
-            processed = process_images(p)
-
-        shared.state.end()
-
-        b64images = list(map(encode_pil_to_base64, processed.images))
-
-        if not img2imgreq.include_init_images:
-            img2imgreq.init_images = None
-            img2imgreq.mask = None
-
-        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
+        return self.img2imgapi(img2imgreq)
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
         reqDict = setUpscalers(req)
@@ -362,6 +298,12 @@ class Api:
             result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", **reqDict)
 
         return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
+    
+    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: bool = Depends(get_current_user)):
+        if not auth:
+            raise get_user_exception()
+
+        return self.extras_single_image_api(req)
 
     def extras_batch_images_api(self, req: ExtrasBatchImagesRequest):
         reqDict = setUpscalers(req)
