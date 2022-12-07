@@ -40,3 +40,22 @@ def update_password(db: Session, user):
     db.commit()
     db.refresh(user_updating)
     return user
+
+def update_user(db: Session, user):
+    """Update the password of a user in the database.
+
+    Args:
+        user: The user to update. Contains name, email, is_active, and is_admin.
+    Returns:
+        The updated user.
+    """
+    user_updating = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
+
+    user_updating.name = user.name
+    user_updating.email = user.email
+    user_updating.is_active = user.is_active
+    user_updating.is_admin = user.is_admin
+    db.add(user_updating)
+    db.commit()
+    db.refresh(user_updating)
+    return user

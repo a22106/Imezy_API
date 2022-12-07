@@ -25,9 +25,9 @@ def get_current_user(token: str = Depends(oauth2_bearer)):
             print("get_current_user: email or user_id is None")
             raise get_user_exception()
         return {"email": email, "user_id": user_id}
-    except JWTError:
-        print("JWTError")
-        raise get_user_exception()
+    except JWTError: # JWTError happens when token is expired or invalid
+        print("JWT error")
+        raise get_jwt_exception()
     
 def get_user_exception():
     credentials_exception = HTTPException(
@@ -37,10 +37,18 @@ def get_user_exception():
     )
     return credentials_exception
 
+def get_jwt_exception():
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials. jwt error exception",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    return credentials_exception
+
 def token_exception():
     token_exception_response = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Could not validate credentials. token exception",
         headers={"WWW-Authenticate": "Bearer"},
     )
     return token_exception_response

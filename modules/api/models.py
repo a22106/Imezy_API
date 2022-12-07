@@ -265,6 +265,12 @@ class UpdatePasswordRequest(BaseModel):
     old_password: str = Field(title="Old Password")
     new_password: str = Field(title="New Password")
 
+class UpdateUserRequest(BaseModel):
+    email: Optional[str] = Field(title="Email")
+    username: Optional[str] = Field(title="Username")
+    is_active: Optional[bool] = Field(default=True)
+    is_admin: Optional[bool] = Field(default=False)
+
 # databases
 class UsersDB(Base):
     __tablename__  = "users"
@@ -275,3 +281,4 @@ class UsersDB(Base):
     hash_password = Column(String)
     is_active = Column(Boolean, default=True)
     created_date = Column(DateTime, default=datetime.utcnow)
+    is_admin = Column(Boolean, default=False)
