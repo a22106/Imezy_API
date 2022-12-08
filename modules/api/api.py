@@ -128,6 +128,18 @@ class Api:
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
+        self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
+    
+    def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        if user is None:
+            print("User is None")
+            raise get_user_exception()
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+        if user_info is not None:
+            db.delete(user_info)
+            db.commit()
+            return {"message": "User deleted"}
+        raise HTTPException(status_code=404, detail="User not found")
 
     def update_user_by_id(self, user_id: int, user: UpdateUserRequest, db: Session = Depends(get_db)):
         return update_user(db, user_id, user)
@@ -172,7 +184,12 @@ class Api:
         token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
         return {"access_token": token, "token_type": "bearer"}
 
-    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db)):
+    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
+        if not auth:
+            raise get_user_exception()
+        if auth["email"] != user.email:
+            raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
+        
         if not update_password(db, user):
             raise HTTPException(status_code=400, detail="Incorrect old password")
         return {"detail": "Password updated"}
@@ -191,6 +208,7 @@ class Api:
             db.commit()
         except exc.IntegrityError:
             db.rollback()
+            print("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
 
         return {"message": f"User {create_user.username} created successfully"}

@@ -282,3 +282,11 @@ class UsersDB(Base):
     is_active = Column(Boolean, default=True)
     created_date = Column(DateTime, default=datetime.utcnow)
     is_admin = Column(Boolean, default=False)
+
+class CreditsDB(Base):
+    __tablename__ = "credits"
+    
+    # id is foreign key from users table
+    user_id = Column(Integer, ForeignKey("users.id"))
+    credits = Column(Integer, default=100)
+    last_updated = Column(DateTime, default=datetime.utcnow)

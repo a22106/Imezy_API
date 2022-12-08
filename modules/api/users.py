@@ -39,7 +39,7 @@ def update_password(db: Session, user):
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)
-    return user
+    return True
 
 def update_user(db: Session, user_id, user):
     """Update the password of a user in the database.
@@ -61,4 +61,18 @@ def update_user(db: Session, user_id, user):
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)
+    return user
+
+def delete_user(db: Session, user_id):
+    """Delete a user from the database.
+
+    Args:
+        user_id: The id of the user to delete.
+
+    Returns:
+        The deleted user.
+    """
+    user = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+    db.delete(user)
+    db.commit()
     return user
