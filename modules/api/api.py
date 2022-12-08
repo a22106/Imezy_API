@@ -208,6 +208,7 @@ class Api:
             db.commit()
         except exc.IntegrityError:
             db.rollback()
+            print("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
 
         return {"message": f"User {create_user.username} created successfully"}
