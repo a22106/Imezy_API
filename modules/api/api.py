@@ -25,6 +25,7 @@ from .database import engine, SessionLocal
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from . import models
+from . import credits
 
 # users
 from .users import *
@@ -34,6 +35,7 @@ from .auth import *
 
 models.Base.metadata.create_all(bind=engine)
 
+DEFAULT_CREDITS = 200
 
 def upscaler_to_index(name: str):
     try:
@@ -123,23 +125,38 @@ class Api:
 
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
-        self.add_api_route("/user/read_users", self.read_all_by_user, methods=["GET"])
+        self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
+        self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
+        
+        self.add_api_route("/credts/read/all", self.read_all_creds, methods=["GET"])
+        self.add_api_route("/credts/read/{user_id}", self.read_cred_by_id, methods=["GET"])
+        self.add_api_route("/credts/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
+        
+        self.not_authenticated(user)
+        if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
+            print("User is not admin")
+            raise get_admin_exception()
+        
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+        username = user_info.username
         if user_info is not None:
             db.delete(user_info)
             db.commit()
-            return {"message": "User deleted"}
+            print(f"User {user_id}:{username} deleted")
+            return {"message": f"User {user_id}:{username} deleted"}
         raise HTTPException(status_code=404, detail="User not found")
+    
+    def user_update_history(self, user: dict, db: Session = Depends(get_db)):
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
+        user_info.last_login = datetime.datetime.now()
+        db.commit()
 
     def update_user_by_id(self, user_id: int, user: UpdateUserRequest, db: Session = Depends(get_db)):
         return update_user(db, user_id, user)
@@ -150,20 +167,20 @@ class Api:
     def read_user_by_id(self, user_id: int, 
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
+        self.not_authenticated(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
         raise HTTPException(status_code=404, detail="User not found")
 
-    def read_all_by_user(self, user: dict = Depends(get_current_user),
+    def read_user_info(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
-        return db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).all()[0]
+        self.not_authenticated(user)
+        
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
+        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user_info.id).first()
+        print(f'Read user info: {user_info["email"]}')
+        return user_info
 
     def authenticate_user(self, email, password, db):
         user = db.query(models.UsersDB)\
@@ -198,20 +215,62 @@ class Api:
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
         create_user_model.username = create_user.username
+        create_user_model.is_admin = create_user.is_admin
         
         hash_password = get_password_hash(create_user.password)
         
         create_user_model.hash_password = hash_password
         print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
+        
         try:
             db.commit()
+            print(f'User {create_user_model.email} created successfully')
         except exc.IntegrityError:
             db.rollback()
             print("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
+        
+        new_credit = models.CreditsDB()
+        new_credit.user_id = db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).first().id
+        db.add(new_credit)
+        
+        try:
+            db.commit()
+            print(f'Credits for user {create_user_model.email} created successfully')
+        except exc.IntegrityError:
+            db.rollback()
+            print(f"Failed to create credits for the user {create_user_model.email}")
+            raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
 
         return {"message": f"User {create_user.username} created successfully"}
+    
+    def update_credits(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        if not auth:
+            raise get_user_exception()
+        user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
+        if user is None:
+            raise get_user_exception()
+        user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
+        if user_credits is None:
+            raise get_user_exception()
+        user_credits.credits = user_credits.credits + user_credits.credits_inc
+        db.commit()
+        return {"message": f"Credits updated for user {user.username}"}
+    
+    def make_admin(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
+            print("User is not admin")
+            raise get_admin_exception()
+        
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+        if user_info is not None:
+            user_info.is_admin = True
+            db.commit()
+            print(f"User {user_id}:{user_info.username} is now admin")
+            return {"message": f"User {user_id}:{user_info.username} is now admin"}
+        raise HTTPException(status_code=404, detail="User not found")
     
     def add_api_route(self, path: str, endpoint, **kwargs):
         if shared.cmd_opts.api_auth:
@@ -460,7 +519,24 @@ class Api:
 
     def get_artists(self):
         return [{"name":x[0], "score":x[1], "category":x[2]} for x in shared.artist_db.artists]
+    
+    def not_authenticated(self, user: dict):
+        if user is None:
+            print("User is None")
+            raise get_user_exception()
 
     def launch(self, server_name, port):
         self.app.include_router(self.router)
         uvicorn.run(self.app, host=server_name, port=port)
+
+    def read_all_creds(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        return credits.read_all_creds(db)
+    
+    def read_cred_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        return credits.read_cred_by_id(user_id, db)
+    
+    def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        return credits.update_cred_by_id(user_id, cred, db)
