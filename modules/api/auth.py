@@ -4,13 +4,16 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
+from modules.api import models
+
 # auth
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 
+
 SECRET_KEY = "secret_api_key"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 120
+ACCESS_TOKEN_EXPIRE_MINUTES = 1200
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

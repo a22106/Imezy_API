@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .database import Base, SessionLocal, engine
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
+from sqlalchemy.orm import relationship
 
 API_NOT_ALLOWED = [
     "self",
@@ -248,7 +249,8 @@ class CreateUserResponse(BaseModel):
     username: str = Field("piushwang", title="Username")
     email: Optional[str] = Field("bk22106@gmail.com", title="Email")
     password: str = Field("1234", title="Password")
-    # created_date: Optional[datetime] = Field(datetime.now(), title="Created Date")
+    is_active: bool = Field(True, title="Is Active")
+    is_admin: bool = Field(False, title="Is Admin")
 
 class JWTResponse(BaseModel):
     access_token: str = Field(title="Access Token")
@@ -270,6 +272,11 @@ class UpdateUserRequest(BaseModel):
     username: Optional[str] = Field(title="Username")
     is_active: Optional[bool] = Field(default=True)
     is_admin: Optional[bool] = Field(default=False)
+    
+class UpdateCreditsRequest(BaseModel):
+    user_email: Optional[str] = Field(title="User Email")
+    credits_inc: Optional[int] = Field(title="Credits")
+    
 
 # databases
 class UsersDB(Base):
@@ -282,13 +289,28 @@ class UsersDB(Base):
     is_active = Column(Boolean, default=True)
     created_date = Column(DateTime, default=datetime.utcnow)
     is_admin = Column(Boolean, default=False)
+    
+    credits = relationship("CreditsDB", back_populates="owner")
+    # credits_history = relationship("CreditsHistoryDB", back_populates="user")
 
 class CreditsDB(Base):
     __tablename__ = "credits"
     
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
+    credits = Column(Integer, default=200)
+    last_updated = Column(DateTime, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"))
-    credits = Column(Integer, default=100)
-    credits_inc = Column(Integer, default=0)
-    date = Column(DateTime, default=datetime.utcnow)
+    
+    owner = relationship("UsersDB", back_populates="credits")
+    
+    
+# class CreditsHistoryDB(Base):
+#     __tablename__ = "credits_history"
+    
+#     id = Column(Integer, primary_key=True, index=True)
+#     credits_inc = Column(Integer, default=0)
+#     updated = Column(DateTime, default=datetime.utcnow)
+#     user_email = Column(String, ForeignKey("users.email"))
+    
+#     user = relationship("UsersDB", back_populates="credits")
