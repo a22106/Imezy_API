@@ -130,15 +130,25 @@ class Api:
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
     
-    def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def not_authenticated(self, user: dict):
         if user is None:
             print("User is None")
             raise get_user_exception()
+    
+    def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        
+        self.not_authenticated(user)
+        if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
+            print("User is not admin")
+            raise get_admin_exception()
+        
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+        username = user_info.username
         if user_info is not None:
             db.delete(user_info)
             db.commit()
-            return {"message": "User deleted"}
+            print(f"User {user_id}:{username} deleted")
+            return {"message": f"User {user_id}:{username} deleted"}
         raise HTTPException(status_code=404, detail="User not found")
 
     def update_user_by_id(self, user_id: int, user: UpdateUserRequest, db: Session = Depends(get_db)):
@@ -150,9 +160,7 @@ class Api:
     def read_user_by_id(self, user_id: int, 
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
+        self.not_authenticated(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
@@ -160,9 +168,7 @@ class Api:
 
     def read_all_by_user(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
+        self.not_authenticated(user)
         return db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).all()[0]
 
     def authenticate_user(self, email, password, db):

@@ -287,6 +287,8 @@ class CreditsDB(Base):
     __tablename__ = "credits"
     
     # id is foreign key from users table
+    id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     credits = Column(Integer, default=100)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    credits_inc = Column(Integer, default=0)
+    date = Column(DateTime, default=datetime.utcnow)
