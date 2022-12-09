@@ -62,3 +62,17 @@ def update_user(db: Session, user_id, user):
     db.commit()
     db.refresh(user_updating)
     return user
+
+def delete_user(db: Session, user_id):
+    """Delete a user from the database.
+
+    Args:
+        user_id: The id of the user to delete.
+
+    Returns:
+        The deleted user.
+    """
+    user = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+    db.delete(user)
+    db.commit()
+    return user

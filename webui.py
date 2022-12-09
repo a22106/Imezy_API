@@ -90,7 +90,6 @@ def initialize():
 
 def setup_cors(app):
     if cmd_opts.cors_allow_origins and cmd_opts.cors_allow_origins_regex:
-
         app.add_middleware(CORSMiddleware, allow_origins=cmd_opts.cors_allow_origins.split(','), 
                            allow_origin_regex=cmd_opts.cors_allow_origins_regex, allow_credentials=True, allow_methods=['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE'], allow_headers=["*"])
     elif cmd_opts.cors_allow_origins:
@@ -99,7 +98,6 @@ def setup_cors(app):
     elif cmd_opts.cors_allow_origins_regex:
         app.add_middleware(CORSMiddleware, allow_origin_regex=cmd_opts.cors_allow_origins_regex, 
                            allow_credentials=True, allow_methods=['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE'], allow_headers=["*"])
-
 
 def create_api(app):
     from modules.api.api import Api
