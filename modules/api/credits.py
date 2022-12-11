@@ -1,41 +1,31 @@
 from .database import engine, SessionLocal
 from . import models
-from .auth import verify_password, get_password_hash
+from .auth import verify_password, get_password_hashed
 # from .models import CreditsHistoryDB, CreditsDB
-from .models import CreditsDB
+from .models import CreditsDB, UpdateCreditsRequest
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-def read_all_creds(db: Session):
+def read_creds(db: Session, owner_id: int = None):
     """Read all credentials from the database.
 
     Returns:
         A list of credentials.
     """
+    if owner_id:
+        return db.query(models.CreditsDB).filter(models.CreditsDB.owner_id == owner_id).all()
     return db.query(models.CreditsDB).all()
 
-def read_cred_by_id(user_id: int, db: Session):
-    """Read a credential from the database by its id.
-
-    Args:
-        user_id: The id of the credential to read.
-
-    Returns:
-        The credential.
-    """
-    return db.query(models.CreditsDB).filter(models.CreditsDB.id == user_id).first()
-
-def update_cred_by_id(user_id: int, cred, db: Session):
+def update_cred_by_id(user_id: int, cred: UpdateCreditsRequest, db: Session):
     current_cred = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user_id).first()
-    cred_update = CreditsDB()
-    cred_update.user_email = cred.user_email
-    cred_update.credits = current_cred.credits + cred.credits_inc
-    cred_update.user_id = user_id
-    db.add(cred_update)
+    current_cred.credits = current_cred.credits + cred.credits_inc
+    current_cred.last_updated = datetime.utcnow()
+    db.add(current_cred)
     
     try:
         db.commit()
-        db.refresh(cred_update)
+        db.refresh(current_cred)
     except:
         db.rollback()
         raise

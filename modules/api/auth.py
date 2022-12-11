@@ -75,7 +75,7 @@ def create_access_token(email: str, user_id: int,
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_password_hash(password):
+def get_password_hashed(password):
     return bcrypt_context.hash(password)
 
 def verify_password(plain_password, hashed_password):

@@ -274,7 +274,6 @@ class UpdateUserRequest(BaseModel):
     is_admin: Optional[bool] = Field(default=False)
     
 class UpdateCreditsRequest(BaseModel):
-    user_email: Optional[str] = Field(title="User Email")
     credits_inc: Optional[int] = Field(title="Credits")
     
 
@@ -285,12 +284,12 @@ class UsersDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     username = Column(String, unique=True, index=True)
-    hash_password = Column(String)
+    hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
-    created_date = Column(DateTime, default=datetime.utcnow)
     is_admin = Column(Boolean, default=False)
+    created_date = Column(DateTime, default=datetime.utcnow)
     
-    credits = relationship("CreditsDB", back_populates="owner")
+    # credits = relationship("CreditsDB", back_populates="owner")
     # credits_history = relationship("CreditsHistoryDB", back_populates="user")
 
 class CreditsDB(Base):
@@ -300,13 +299,13 @@ class CreditsDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
     last_updated = Column(DateTime, default=datetime.utcnow)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    owner_email = Column(String, ForeignKey("users.email"))
     
-    owner = relationship("UsersDB", back_populates="credits")
+    # owner = relationship("UsersDB", back_populates="credits")
     
     
 # class CreditsHistoryDB(Base):
-#     __tablename__ = "credits_history"
+#     __tablename__ = "cred_history"
     
 #     id = Column(Integer, primary_key=True, index=True)
 #     credits_inc = Column(Integer, default=0)

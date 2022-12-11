@@ -24,6 +24,7 @@ from passlib.context import CryptContext
 from .database import engine, SessionLocal
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
+from sqlalchemy.orm.exc import FlushError
 from . import models
 from . import credits
 
@@ -80,13 +81,6 @@ def encode_pil_to_base64(image):
         )
         bytes_data = output_bytes.getvalue()
     return base64.b64encode(bytes_data)
-
-# def get_db():
-#     try:
-#         db = SessionLocal()
-#         yield db
-#     finally:
-#         db.close()
     
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
@@ -134,7 +128,7 @@ class Api:
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
         
         self.add_api_route("/credts/read/all", self.read_all_creds, methods=["GET"])
-        self.add_api_route("/credts/read/{user_id}", self.read_cred_by_id, methods=["GET"])
+        self.add_api_route("/credts/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credts/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -188,7 +182,7 @@ class Api:
         
         if not user:
             return False
-        if not verify_password(password, user.hash_password):
+        if not verify_password(password, user.hashed_password):
             return False
         return user
     
@@ -212,17 +206,18 @@ class Api:
         return {"detail": "Password updated"}
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
+        is_exist = db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first()
+        if is_exist:
+            raise HTTPException(status_code=400, detail=f"The user {create_user.email} already exists in the system")
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
         create_user_model.username = create_user.username
         create_user_model.is_admin = create_user.is_admin
-        
-        hash_password = get_password_hash(create_user.password)
-        
-        create_user_model.hash_password = hash_password
+        create_user_model.is_active = create_user.is_active
+        hashed_password = get_password_hashed(create_user.password)
+        create_user_model.hashed_password = hashed_password
         print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
-        
         try:
             db.commit()
             print(f'User {create_user_model.email} created successfully')
@@ -230,9 +225,13 @@ class Api:
             db.rollback()
             print("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
+        except FlushError:
+            db.rollback()
+            print("User already exist")
+            raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         
         new_credit = models.CreditsDB()
-        new_credit.user_id = db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).first().id
+        new_credit.owner_email = create_user_model.email
         db.add(new_credit)
         
         try:
@@ -240,6 +239,14 @@ class Api:
             print(f'Credits for user {create_user_model.email} created successfully')
         except exc.IntegrityError:
             db.rollback()
+            db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
+            db.commit()
+            print(f"Failed to create credits for the user {create_user_model.email}")
+            raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
+        except FlushError:
+            db.rollback()
+            db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
+            db.commit()
             print(f"Failed to create credits for the user {create_user_model.email}")
             raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
 
@@ -531,11 +538,12 @@ class Api:
 
     def read_all_creds(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
-        return credits.read_all_creds(db)
+        return credits.read_creds(db)
     
-    def read_cred_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def read_cred_by_id(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
-        return credits.read_cred_by_id(user_id, db)
+        user_id = user.get("user_id", None)
+        return credits.read_creds(db, user_id)
     
     def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)

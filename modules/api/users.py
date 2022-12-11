@@ -1,7 +1,7 @@
 
 from .database import engine, SessionLocal
 from . import models
-from .auth import verify_password, get_password_hash
+from .auth import verify_password, get_password_hashed
 
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ def update_password(db: Session, user):
     if not verify_password(user.old_password, user_updating.hash_password):
         return False
 
-    user_updating.hash_password = get_password_hash(user.new_password)
+    user_updating.hash_password = get_password_hashed(user.new_password)
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)
