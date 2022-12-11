@@ -301,7 +301,16 @@ class CreditsDB(Base):
     last_updated = Column(DateTime, default=datetime.utcnow)
     owner_email = Column(String, ForeignKey("users.email"))
     
+    
     # owner = relationship("UsersDB", back_populates="credits")
+    
+class UsersAdminDB(Base):
+    __tablename__ = "users_admin"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    
+    # user = relationship("UsersDB", back_populates="email")
     
     
 # class CreditsHistoryDB(Base):

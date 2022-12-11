@@ -140,7 +140,9 @@ class Api:
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         username = user_info.username
+        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info.email).first()
         if user_info is not None:
+            db.delete(credits_info)
             db.delete(user_info)
             db.commit()
             print(f"User {user_id}:{username} deleted")
@@ -212,23 +214,29 @@ class Api:
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
         create_user_model.username = create_user.username
-        create_user_model.is_admin = create_user.is_admin
         create_user_model.is_active = create_user.is_active
         hashed_password = get_password_hashed(create_user.password)
         create_user_model.hashed_password = hashed_password
+        create_user_model.is_admin = create_user.is_admin
         print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
         try:
             db.commit()
             print(f'User {create_user_model.email} created successfully')
+            if create_user.is_admin:
+                add_admin = models.UsersAdminDB()
+                add_admin.email = create_user.email.lower()
+                db.add(add_admin)
+                db.commit()
         except exc.IntegrityError:
             db.rollback()
             print("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         except FlushError:
             db.rollback()
-            print("User already exist")
+            print(f"User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
+        
         
         new_credit = models.CreditsDB()
         new_credit.owner_email = create_user_model.email
