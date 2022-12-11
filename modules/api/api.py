@@ -127,9 +127,9 @@ class Api:
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
         
-        self.add_api_route("/credts/read/all", self.read_all_creds, methods=["GET"])
-        self.add_api_route("/credts/read", self.read_cred_by_id, methods=["GET"])
-        self.add_api_route("/credts/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
+        self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
+        self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
+        self.add_api_route("/credits/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         
