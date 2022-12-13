@@ -44,7 +44,6 @@ def upscaler_to_index(name: str):
     except:
         raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be on of these: {' , '.join([x.name for x in sd_upscalers])}")
 
-
 def validate_sampler_name(name):
     config = sd_samplers.all_samplers_map.get(name, None)
     if config is None:
@@ -98,6 +97,7 @@ class Api:
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
+        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
         self.add_api_route("/sdapi/v1/png-info", self.pnginfoapi, methods=["POST"], response_model=PNGInfoResponse)
         self.add_api_route("/sdapi/v1/progress", self.progressapi, methods=["GET"], response_model=ProgressResponse)
@@ -174,7 +174,7 @@ class Api:
         self.not_authenticated(user)
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user_info.id).first()
+        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info.email).first()
         print(f'Read user info: {user_info["email"]}')
         return user_info
 
@@ -326,7 +326,7 @@ class Api:
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
         if not auth:
             raise get_user_exception()
-
+        print(f"User {auth['email']} is generating an image")
         return self.text2imgapi(txt2imgreq)
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
@@ -370,7 +370,7 @@ class Api:
 
         return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
 
-    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
+    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: dict = Depends(get_current_user)):
         if not auth:
             raise get_user_exception()
 
@@ -386,7 +386,7 @@ class Api:
 
         return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
     
-    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: bool = Depends(get_current_user)):
+    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(get_current_user)):
         if not auth:
             raise get_user_exception()
 
@@ -539,15 +539,15 @@ class Api:
         self.app.include_router(self.router)
         uvicorn.run(self.app, host=server_name, port=port)
 
-    def read_all_creds(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+    def read_all_creds(self, db: Session = Depends(get_db)):
         return credits.read_creds(db)
     
     def read_cred_by_id(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
-        user_id = user.get("user_id", None)
-        return credits.read_creds(db, user_id)
+        user_email = user.get("email", None)
+        return credits.read_creds(db, user_email)
     
     def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
-        return credits.update_cred_by_id(user_id, cred, db)
+        user_email = db.query(models.User).filter(models.User.id == user_id).first().email
+        return credits.update_cred_by_id(user_email, cred, db)
