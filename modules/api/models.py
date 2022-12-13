@@ -266,6 +266,7 @@ class UpdatePasswordRequest(BaseModel):
     email: Optional[str] = Field(title="Email")
     old_password: str = Field(title="Old Password")
     new_password: str = Field(title="New Password")
+    confirm_password: str = Field(title="confirm_password")
 
 class UpdateUserRequest(BaseModel):
     email: Optional[str] = Field(title="Email")

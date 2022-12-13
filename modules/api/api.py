@@ -119,6 +119,7 @@ class Api:
 
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
+        self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
         self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
@@ -173,8 +174,10 @@ class Api:
                          db: Session = Depends(get_db)):
         self.not_authenticated(user)
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info.email).first()
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
+        del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
+        
+        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info["email"]).first().__dict__["credits"]
         print(f'Read user info: {user_info["email"]}')
         return user_info
 
@@ -193,9 +196,14 @@ class Api:
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
             raise token_exception()
-        token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
-        return {"access_token": token, "token_type": "bearer"}
+        token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+        access_token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
+        refresh_token = create_refresh_token(email=user.email, user_id=user.id, expires_delta=token_expires)
+        return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    
+    def get_access_token(self, refresh_token: str, db: Session = Depends(get_db)):
+        pass
+        
 
     def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
         if not auth:
@@ -203,8 +211,11 @@ class Api:
         if auth["email"] != user.email:
             raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
         
-        if not update_password(db, user):
+        if user.new_password != user.confirm_password:
+            raise HTTPException(status_code=400, detail="New password and confirm password do not match")
+        elif not update_password(db, user): # update_password returns True if password was updated. it updates the password it self
             raise HTTPException(status_code=400, detail="Incorrect old password")
+        
         return {"detail": "Password updated"}
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):

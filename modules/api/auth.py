@@ -13,7 +13,9 @@ from jose import JWTError, jwt
 
 SECRET_KEY = "secret_api_key"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1200
+ACCESS_TOKEN_EXPIRES_MINUTES = 120*12 # 24 hours
+REFRESH_TOKEN_EXPIRES_MINUTES = 3*30*24*60 # 3 months
+
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -71,6 +73,18 @@ def create_access_token(email: str, user_id: int,
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# refresh token expires in 3 months
+def create_refresh_token(email: str, user_id: int, 
+                    expires_delta: Optional[timedelta] = None):
+    to_encode = {"email": email, "user_id": user_id}
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else: # else 1 day
+        expire = datetime.utcnow() + timedelta(minutes=24*60)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

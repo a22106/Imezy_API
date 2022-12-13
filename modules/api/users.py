@@ -51,17 +51,21 @@ def update_user(db: Session, user_id, user):
     """
     user_updating = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
 
-    if user.username.lower() == "String" or user.email.lower() == "String":
-        return False
-    print(f"Updating user {user.username} with email {user.email} and is_active {user.is_active} and is_admin {user.is_admin}")
-    user_updating.username = user.username
-    user_updating.email = user.email.lower()
-    user_updating.is_active = user.is_active
-    user_updating.is_admin = user.is_admin
+    
+    
+    for attr in user.__dict__.keys():
+        if getattr(user, attr) != None:
+            print(f"{attr}: {getattr(user, attr)}")
+            setattr(user_updating, attr, getattr(user, attr))
+        
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)
-    return user
+    
+    response_user_info = user_updating.__dict__
+    del response_user_info["hashed_password"], response_user_info["created_date"]
+    response = {"code": 200, "message": "User updated", "data": response_user_info}
+    return response
 
 def delete_user(db: Session, user_id):
     """Delete a user from the database.
