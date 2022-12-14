@@ -2,6 +2,7 @@ import base64
 import io
 import time
 import uvicorn
+from dotenv import load_dotenv
 from threading import Lock
 from io import BytesIO
 from gradio.processing_utils import decode_base64_to_file
@@ -25,8 +26,10 @@ from .database import engine, SessionLocal
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
-from . import models
+from . import models, credits
 from . import credits
+from . import Responses as Res
+
 
 # users
 from .users import *
@@ -124,6 +127,8 @@ class Api:
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
+        self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
+        self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
@@ -131,6 +136,28 @@ class Api:
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credits/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
+        
+        # self.add_api_route("/extra/res_codes", self.get_res_codes, methods=["GET"])
+        
+    # def get_res_codes(self):
+    #     return {"response_codes": Responses.res_codes}
+    
+    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        if req.email != req.confirm_email:
+            raise HTTPException(status_code=400, detail="Emails do not match")
+        
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
+        user_info.email = req.email
+        db.commit()
+        return {"message": "Email updated to '{}' successfully".format(req.email)}
+    
+    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(user)
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
+        user_info.username = req
+        db.commit()
+        return {"message": "Username updated to '{}' successfully".format(req)}
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         
@@ -219,15 +246,22 @@ class Api:
         return {"detail": "Password updated"}
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
-        is_exist = db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first()
-        if is_exist:
-            raise HTTPException(status_code=400, detail=f"The user {create_user.email} already exists in the system")
+        # filter if create_user.email or create_user.username already exists
+        is_exist = []
+        is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.username == create_user.username).first())
+        is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
+        if is_exist[0]:
+            print(f"The username '{create_user.username}' is already in use")
+            raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use")
+        elif is_exist[1]:
+            print(f"The email {create_user.email} is already in use")
+            raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use")
+        
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
         create_user_model.username = create_user.username
         create_user_model.is_active = create_user.is_active
-        hashed_password = get_password_hashed(create_user.password)
-        create_user_model.hashed_password = hashed_password
+        create_user_model.hashed_password = get_password_hashed(create_user.password)
         create_user_model.is_admin = create_user.is_admin
         print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)

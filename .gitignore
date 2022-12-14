@@ -3,6 +3,7 @@ __pycache__
 *.safetensors
 *.pth
 *.db
+.env
 /ESRGAN/*
 /SwinIR/*
 /repositories
@@ -36,3 +37,4 @@ notification.mp3
 
 .nfs*
 .gitignore
+modules/api/updateDB.sql

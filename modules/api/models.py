@@ -262,6 +262,13 @@ class UpdateUserRequest(BaseModel):
     password: Optional[str] = Field
     is_active: Optional[bool] = Field(default=True)
 
+class UpdateUsernameRequest(BaseModel):
+    username: str = Field(title="Username")
+
+class UpdateEmailRequest(BaseModel):
+    email: str = Field(title="Email")
+    confirm_email: str = Field(title="Confirm Email")
+
 class UpdatePasswordRequest(BaseModel):
     email: Optional[str] = Field(title="Email")
     old_password: str = Field(title="Old Password")
