@@ -129,6 +129,7 @@ class Api:
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
+        
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
@@ -144,17 +145,45 @@ class Api:
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
+        print(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
+        elif db.query(models.UsersDB).filter(models.UsersDB.email == req.email).first():
+            raise HTTPException(status_code=400, detail="Email already exists")
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
-        user_info.email = req.email
+        current_email = user['email']
+        # credits_db = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == current_email).first()
+        # credits_db.owner_email = req.email
+        # db.commit()
+        # if admin_db := db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == current_email).first():
+        #     admin_db.email = req.email
+        # db.commit()
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == current_email).first()
+        user_db.email = req.email
         db.commit()
-        return {"message": "Email updated to '{}' successfully".format(req.email)}
+
+        try:
+            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+            refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRES_MINUTES)
+            access_token = create_access_token(email=user_db.email, user_id=user["user_id"], expires_delta=access_token_expires)
+            refresh_token = create_refresh_token(email=user_db.email, user_id=user["user_id"], expires_delta=refresh_token_expires)
+            response = {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+            response.update({"message": "Email updated to '{}' successfully".format(req.email)})
+        except:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Could not update email")
+
+            
+        return response
     
     def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
+        if db.query(models.UsersDB).filter(models.UsersDB.username == req.username).first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        elif len(req.username) < 3:
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
+        
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == req.username).first()
         user_info.username = req
         db.commit()
         return {"message": "Username updated to '{}' successfully".format(req)}
