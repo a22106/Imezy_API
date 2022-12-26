@@ -152,13 +152,10 @@ class Api:
             raise HTTPException(status_code=400, detail="Email already exists")
         
         current_email = user['email']
-        # credits_db = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == current_email).first()
-        # credits_db.owner_email = req.email
-        # db.commit()
-        # if admin_db := db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == current_email).first():
-        #     admin_db.email = req.email
-        # db.commit()
         user_db = db.query(models.UsersDB).filter(models.UsersDB.email == current_email).first()
+        if user_db is None:
+            print(f"The token is invalid({current_email}). Please login again.")
+            raise HTTPException(status_code=401, detail=f"The token is invalid({current_email}). Please login again.")
         user_db.email = req.email
         db.commit()
 
@@ -183,10 +180,18 @@ class Api:
         elif len(req.username) < 3:
             raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == req.username).first()
-        user_info.username = req
-        db.commit()
-        return {"message": "Username updated to '{}' successfully".format(req)}
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user["user_id"]).first()
+        if not user_info:
+            raise HTTPException(status_code=400, detail="User not found")
+        
+        user_info.username = req.username
+        try:
+            db.commit()
+            print(f"Username updated to {req.username} successfully")
+            return {"message": "Username updated to '{}' successfully".format(req.username)}
+        except AttributeError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Could not update username")
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         
@@ -230,7 +235,11 @@ class Api:
                          db: Session = Depends(get_db)):
         self.not_authenticated(user)
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
+        try:
+            user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
+        except AttributeError:
+            raise HTTPException(status_code=404, detail=f"User not found with email {user['email']}")
+        
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
         user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info["email"]).first().__dict__["credits"]
