@@ -6,10 +6,13 @@ from dotenv import load_dotenv
 from threading import Lock
 from io import BytesIO
 from gradio.processing_utils import decode_base64_to_file
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.responses import JSONResponse
 from secrets import compare_digest
 from datetime import datetime, timedelta
+from fastapi_jwt_auth import AuthJWT
+from fastapi_jwt_auth.exceptions import AuthJWTException
 
 import modules.shared as shared
 from modules import sd_samplers, deepbooru
@@ -121,8 +124,10 @@ class Api:
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
 
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
-        self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
-        self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
+        self.add_api_route("/user/login", self.login, methods=["POST"])
+        # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
+        self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"])
+        self.add_api_route("/user/logout", self.logout, methods=["POST"])
         self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
@@ -138,6 +143,12 @@ class Api:
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credits/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
         
+        @self.app.exception_handler(AuthJWTException)
+        def authjwt_exception_handler(request: Request, exc: AuthJWTException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.message},
+            )
         # self.add_api_route("/extra/res_codes", self.get_res_codes, methods=["GET"])
         
     # def get_res_codes(self):
@@ -256,18 +267,77 @@ class Api:
             return False
         return user
     
-    def login_for_access_token(self, form_data: OAuth2PasswordRequestForm = Depends(),
+    def login(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
             raise token_exception()
-        token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
-        access_token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
-        refresh_token = create_refresh_token(email=user.email, user_id=user.id, expires_delta=token_expires)
+        access_token = create_access_token(email=user.email, user_id=user.id)
+        refresh_token = create_refresh_token(email=user.email, user_id=user.id)
+        
+        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user.email).first()
+        # check if user has a refresh token is outdated
+        if not former_rtoken:
+            new_rtoken = models.RefreshTokenDB()
+            new_rtoken.token = refresh_token
+            new_rtoken.owner_email = user.email
+            
+            db.add(new_rtoken)
+            db.commit()
+        else:
+            former_rtoken.token = refresh_token
+            db.commit()
+        
+        return {
+            "access_token": access_token, 
+            "refresh_token": refresh_token, 
+            "token_type": "bearer"}
+    
+    # get new access token with refresh token
+    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
+        if self.not_authenticated(auth):
+            raise HTTPException(status_code=401, detail="The token is not refresh token or invalid")
+        
+        user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
+        if not user:
+            raise token_exception()
+        
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user.email).first()
+        if not rtoken:
+            raise token_exception()
+        
+        
+        access_token = create_access_token(email=user.email, user_id=user.id)
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer"}
+    
+    # when user logs out, delete refresh token
+    def logout(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        self.not_authenticated(auth)
+        
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == auth["email"]).first()
+        if not rtoken:
+            raise token_exception()
+        
+        db.delete(rtoken)
+        db.commit()
+        return {"message": f"user {auth['email']} logged out"}
+    
+    def login_new(self, user: UserResponse, authorize: AuthJWT = Depends(), db: Session = Depends(get_db)):
+        self.authenticate_user(user.email, user.password, db)
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
+        if user_db is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        elif not verify_password(user.password, user_db.hashed_password):
+            raise HTTPException(status_code=401, detail="Incorrect password")
+        elif not user_db.is_active:
+            raise HTTPException(status_code=401, detail="User is not active")
+            
+        access_token = authorize.create_access_token(subject=user.email)
+        refresh_token = authorize.create_refresh_token(subject=user.email)
         return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
     
-    def get_access_token(self, refresh_token: str, db: Session = Depends(get_db)):
-        pass
         
 
     def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
@@ -615,8 +685,10 @@ class Api:
     
     def not_authenticated(self, user: dict):
         if user is None:
-            print("User is None")
+            print("User is not authenticated")
             raise get_user_exception()
+        if user['type'] == 'refresh':
+            return False
 
     def launch(self, server_name, port):
         self.app.include_router(self.router)
@@ -634,3 +706,5 @@ class Api:
         self.not_authenticated(user)
         user_email = db.query(models.User).filter(models.User.id == user_id).first().email
         return credits.update_cred_by_id(user_email, cred, db)
+    
+    

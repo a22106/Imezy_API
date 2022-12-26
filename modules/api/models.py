@@ -6,7 +6,7 @@ from inflection import underscore
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img
 from modules.shared import sd_upscalers, opts, parser
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .database import Base, SessionLocal, engine
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
@@ -256,11 +256,9 @@ class JWTResponse(BaseModel):
     access_token: str = Field(title="Access Token")
     token_type: str = Field(title="Token Type")
 
-class UpdateUserRequest(BaseModel):
-    email: Optional[str] = Field
-    username: Optional[str] = Field
-    password: Optional[str] = Field
-    is_active: Optional[bool] = Field(default=True)
+class UserResponse(BaseModel):
+    email: str = Field(title="Email")
+    password: str = Field(title="Password")
 
 class UpdateUsernameRequest(BaseModel):
     username: str = Field(title="Username")
@@ -284,6 +282,12 @@ class UpdateUserRequest(BaseModel):
 class UpdateCreditsRequest(BaseModel):
     credits_inc: Optional[int] = Field(title="Credits")
     
+class AuthSettings(BaseModel):
+    SECRET_KEY_ACCESS = "secret_api_key"
+    SECRET_KEY_REFRESH = "secret_refresh"
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(hours=24)
+    REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
 
 # databases
 class UsersDB(Base):
@@ -319,6 +323,13 @@ class UsersAdminDB(Base):
     email = Column(String, ForeignKey("users.email"))
     
     # user = relationship("UsersDB", back_populates="email")
+    
+class RefreshTokenDB(Base):
+    __tablename__ = "r_token"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True)
+    owner_email = Column(String, ForeignKey("users.email"))
     
     
 # class CreditsHistoryDB(Base):

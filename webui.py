@@ -4,7 +4,8 @@ import time
 import importlib
 import signal
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -122,6 +123,7 @@ def api_only():
     app = FastAPI()
     setup_cors(app)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    
     api = create_api(app)
 
     modules.script_callbacks.app_started_callback(None, app)
