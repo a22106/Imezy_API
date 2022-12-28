@@ -1,16 +1,10 @@
 
-from .database import engine, SessionLocal
+from .database import engine, SessionLocal, get_db
 from . import models
 from .auth import verify_password, get_password_hashed
 
 from sqlalchemy.orm import Session
 
-def get_db():
-    try:
-        db = SessionLocal()
-        yield db
-    finally:
-        db.close()
 
 def read_users(db):
     """Read all users from the database.

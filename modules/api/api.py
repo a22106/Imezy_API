@@ -1,3 +1,10 @@
+''' 할 일
+
+- [x] 1. 기능별로 라우터를 나누어서 api.py에 합치기
+
+
+'''
+
 import base64
 import io
 import time
@@ -7,7 +14,7 @@ from threading import Lock
 from io import BytesIO
 from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from secrets import compare_digest
 from datetime import datetime, timedelta
@@ -29,19 +36,14 @@ from modules import devices
 from typing import List
 
 from passlib.context import CryptContext
-from .database import engine, SessionLocal
+from .database import engine, get_db
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 from . import models, credits
-from . import credits
 from . import Responses as Res
 
-
-# users
 from .users import *
-
-# auth
 from .auth import *
 
 models.Base.metadata.create_all(bind=engine)
@@ -141,7 +143,7 @@ class Api:
         self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
-        self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
+        self.add_api_route("/user/update_password", self.update_password, methods=["PUT"], response_model=UpdatePasswordResponse)
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
         
@@ -203,7 +205,7 @@ class Api:
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user["user_id"]).first()
         if not user_info:
-            raise HTTPException(status_code=400, detail="User not found")
+            raise exceptions.get_user_not_found_exception()
         
         user_info.username = req.username
         try:
@@ -219,7 +221,7 @@ class Api:
         self.not_authenticated(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
-            raise get_admin_exception()
+            raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         username = user_info.username
@@ -230,7 +232,7 @@ class Api:
             db.commit()
             print(f"User {user_id}:{username} deleted")
             return {"message": f"User {user_id}:{username} deleted"}
-        raise HTTPException(status_code=404, detail="User not found")
+        raise exceptions.get_user_not_found_exception()
     
     def user_update_history(self, user: dict, db: Session = Depends(get_db)):
         user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
@@ -250,7 +252,7 @@ class Api:
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
-        raise HTTPException(status_code=404, detail="User not found")
+        raise exceptions.get_user_not_found_exception()
 
     def read_user_info(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
@@ -281,7 +283,7 @@ class Api:
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
-            raise token_exception()
+            raise exceptions.token_exception()
         access_token = create_access_token(email=user.email, user_id=user.id)
         refresh_token = create_refresh_token(email=user.email, user_id=user.id)
         
@@ -310,11 +312,11 @@ class Api:
         
         user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
         if not user:
-            raise token_exception()
+            raise exceptions.token_exception()
         
         rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user.email).first()
         if not rtoken:
-            raise token_exception()
+            raise exceptions.token_exception()
         
         
         access_token = create_access_token(email=user.email, user_id=user.id)
@@ -328,7 +330,7 @@ class Api:
         
         rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == auth["email"]).first()
         if not rtoken:
-            raise token_exception()
+            raise exceptions.token_exception()
         
         db.delete(rtoken)
         db.commit()
@@ -338,11 +340,11 @@ class Api:
         self.authenticate_user(user.email, user.password, db)
         user_db = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
         if user_db is None:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise exceptions.get_user_not_found_exception()
         elif not verify_password(user.password, user_db.hashed_password):
-            raise HTTPException(status_code=401, detail="Incorrect password")
+            raise exceptions.get_incorrent_password_exception
         elif not user_db.is_active:
-            raise HTTPException(status_code=401, detail="User is not active")
+            raise exceptions.get_not_active_user_exception()
             
         access_token = authorize.create_access_token(subject=user.email)
         refresh_token = authorize.create_refresh_token(subject=user.email)
@@ -352,7 +354,7 @@ class Api:
 
     def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
         if not auth:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         if auth["email"] != user.email:
             raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
         
@@ -361,7 +363,7 @@ class Api:
         elif not update_password(db, user): # update_password returns True if password was updated. it updates the password it self
             raise HTTPException(status_code=400, detail="Incorrect old password")
         
-        return {"detail": "Password updated"}
+        return UpdatePasswordResponse(info="Password updated successfully")
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
@@ -425,13 +427,13 @@ class Api:
     
     def update_credits(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         if not auth:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
         if user is None:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
         if user_credits is None:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         user_credits.credits = user_credits.credits + user_credits.credits_inc
         db.commit()
         return {"message": f"Credits updated for user {user.username}"}
@@ -440,7 +442,7 @@ class Api:
         self.not_authenticated(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
-            raise get_admin_exception()
+            raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
@@ -486,11 +488,55 @@ class Api:
 
         return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
 
-    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user), db: Session = Depends(get_db)):
         if not auth:
-            raise get_user_exception()
-        print(f"User {auth['email']} is generating an image")
-        return self.text2imgapi(txt2imgreq)
+            raise exceptions.get_user_exception()
+        
+        # check auth email and if the user has enough credits
+        try:
+            user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
+            if user is None:
+                raise exceptions.get_user_exception()
+            created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
+            if user.credits < created_images_num * 25:
+                raise exceptions.not_enough_credits_exception()
+            
+            populate = txt2imgreq.copy(update={ # Override __init__ params
+                "sd_model": shared.sd_model,
+                "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
+                "do_not_save_samples": True,
+                "do_not_save_grid": True
+                }
+            )
+            if populate.sampler_name:
+                populate.sampler_index = None  # prevent a warning later on
+            p = StableDiffusionProcessingTxt2Img(**vars(populate))
+            # Override object param
+
+            shared.state.begin()
+
+            with self.queue_lock:
+                processed = process_images(p)
+
+            shared.state.end()
+
+            b64images = list(map(encode_pil_to_base64, processed.images))
+            
+            # update credits
+            
+            updateing_creedit_inc = -25*created_images_num # 25 credits per image
+            print()
+            if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
+                raise exceptions.get_user_exception()
+            
+            print(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
+            
+        except Exception as e:
+            db.rollback() # rollback if there is an error
+            print(f"Failed to update credits for user {auth['email']}\n", e)
+            raise exceptions.get_user_exception()
+        
+        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
         init_images = img2imgreq.init_images
@@ -535,7 +581,7 @@ class Api:
 
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: dict = Depends(get_current_user)):
         if not auth:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
 
         return self.img2imgapi(img2imgreq)
 
@@ -551,8 +597,9 @@ class Api:
     
     def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(get_current_user)):
         if not auth:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
 
+        
         return self.extras_single_image_api(req)
 
     def extras_batch_images_api(self, req: ExtrasBatchImagesRequest):
@@ -696,7 +743,7 @@ class Api:
     def not_authenticated(self, user: dict):
         if user is None:
             print("User is not authenticated")
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         if user['type'] == 'refresh':
             return False
 
@@ -801,6 +848,9 @@ class Api:
     def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         self.not_authenticated(user)
         user_email = db.query(models.User).filter(models.User.id == user_id).first().email
+        if user_email != user.get("email", None):
+            raise exceptions.get_user_exception()
+        
         return credits.update_cred_by_id(user_email, cred, db)
     
     

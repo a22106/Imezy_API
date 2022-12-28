@@ -30,6 +30,7 @@ API_NOT_ALLOWED = [
     "ddim_discretize"
 ]
 
+
 class ModelDef(BaseModel):
     """Assistance Class for Pydantic Dynamic Model Generation"""
 
@@ -146,7 +147,7 @@ class ExtrasSingleImageRequest(ExtrasBaseRequest):
     image: str = Field(default="", title="Image", description="Image to work on, must be a Base64 string containing the image's data.")
 
 class ExtrasSingleImageResponse(ExtraBaseResponse):
-    image: str = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images: str = Field(default=None, title="Image", description="The generated image in base64 format.")
 
 class FileData(BaseModel):
     data: str = Field(title="File data", description="Base64 representation of the file")
@@ -281,6 +282,9 @@ class UpdatePasswordRequest(BaseModel):
     old_password: str = Field(title="Old Password")
     new_password: str = Field(title="New Password")
     confirm_password: str = Field(title="confirm_password")
+    
+class UpdatePasswordResponse(BaseModel):
+    info: str = Field(title="Info")
 
 class UpdateUserRequest(BaseModel):
     email: Optional[str] = Field(title="Email")
@@ -309,9 +313,6 @@ class UsersDB(Base):
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_date = Column(DateTime, default=datetime.utcnow)
-    
-    # credits = relationship("CreditsDB", back_populates="owner")
-    # credits_history = relationship("CreditsHistoryDB", back_populates="user")
 
 class CreditsDB(Base):
     __tablename__ = "credits"
@@ -323,15 +324,12 @@ class CreditsDB(Base):
     owner_email = Column(String, ForeignKey("users.email"))
     
     
-    # owner = relationship("UsersDB", back_populates="credits")
-    
 class UsersAdminDB(Base):
     __tablename__ = "users_admin"
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
     
-    # user = relationship("UsersDB", back_populates="email")
     
 class RefreshTokenDB(Base):
     __tablename__ = "r_token"
@@ -340,13 +338,12 @@ class RefreshTokenDB(Base):
     token = Column(String, unique=True, index=True)
     owner_email = Column(String, ForeignKey("users.email"))
     
+class CreditsUpdateDB(Base):
+    __tablename__ = "credits_update"
     
-# class CreditsHistoryDB(Base):
-#     __tablename__ = "cred_history"
+    id = Column(Integer, primary_key=True, index=True)
+    owner_email = Column(String, ForeignKey("users.email"))
+    credits_inc = Column(Integer, default=0)
+    updated = Column(DateTime, default=datetime.utcnow)
     
-#     id = Column(Integer, primary_key=True, index=True)
-#     credits_inc = Column(Integer, default=0)
-#     updated = Column(DateTime, default=datetime.utcnow)
-#     user_email = Column(String, ForeignKey("users.email"))
     
-#     user = relationship("UsersDB", back_populates="credits")

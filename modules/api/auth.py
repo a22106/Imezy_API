@@ -13,7 +13,9 @@ from pydantic import ValidationError
 from passlib.context import CryptContext
 from jose import JWTError, jwt, ExpiredSignatureError
 
-    
+from . import exceptions
+
+
 SECRET_KEY_ACCESS = "secret_api_key"
 # SECRET_KEY_REFRESH = "secret_refresh"
 ALGORITHM = "HS256"
@@ -38,56 +40,16 @@ def get_current_user(token: str = Depends(oauth2_bearer)):
         
         if email is None or user_id is None:
             print("get_current_user: email or user_id is None")
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         
         return {"email": email, "user_id": user_id, "type": t_type}
     except ExpiredSignatureError:
         print("JWT is expired")
-        raise get_jwt_expired_exception()
+        raise exceptions.get_jwt_expired_exception()
     except JWTError: # JWTError happens when token is expired or invalid
         print("JWT is invalid")
-        raise get_jwt_exception()
+        raise exceptions.get_jwt_exception()
     
-def get_user_exception():
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. user exception",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    return credentials_exception
-
-def get_admin_exception():
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. not a admin user",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    return credentials_exception
-
-def get_jwt_exception():
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. the token is expired or invalid",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    return credentials_exception
-
-def get_jwt_expired_exception():
-    expired_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. the token is expired",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    return expired_exception
-
-def token_exception():
-    token_exception_response = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. token exception",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    return token_exception_response
-
 def create_access_token(email: str, user_id: int, 
                     expires_delta: Optional[timedelta] = timedelta(seconds=120)):
     to_encode = {"email": email, "user_id": user_id}
