@@ -32,10 +32,10 @@ def update_password(db: Session, user):
     """
     user_updating = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
 
-    if not verify_password(user.old_password, user_updating.hash_password):
+    if not verify_password(user.old_password, user_updating.hashed_password):
         return False
 
-    user_updating.hash_password = get_password_hashed(user.new_password)
+    user_updating.hashed_password = get_password_hashed(user.new_password)
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)

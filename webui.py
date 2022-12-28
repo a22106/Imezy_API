@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from modules import import_hook
 from modules.call_queue import wrap_queued_call, queue_lock, wrap_gradio_gpu_call
 from modules.paths import script_path
 
@@ -157,8 +158,8 @@ def webui():
 
         # gradio uses a very open CORS policy via app.user_middleware, which makes it possible for
         # an attacker to trick the user into opening a malicious HTML page, which makes a request to the
-        # running web ui and do whatever the attcker wants, including installing an extension and
-        # runnnig its code. We disable this here. Suggested by RyotaK.
+        # running web ui and do whatever the attacker wants, including installing an extension and
+        # running its code. We disable this here. Suggested by RyotaK.
         app.user_middleware = [x for x in app.user_middleware if x.cls.__name__ != 'CORSMiddleware']
 
         setup_cors(app)
