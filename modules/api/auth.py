@@ -17,7 +17,7 @@ from jose import JWTError, jwt, ExpiredSignatureError
 SECRET_KEY_ACCESS = "secret_api_key"
 # SECRET_KEY_REFRESH = "secret_refresh"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(hours=24)
+ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(minutes=1)
 REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
 
 
