@@ -1,7 +1,8 @@
 ''' 할 일
 
-- [x] 1. 기능별로 라우터를 나누어서 api.py에 합치기
-
+- [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
+- [ ] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
+- [ ] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
 
 '''
 
@@ -105,11 +106,11 @@ class Api:
         self.app = app
         self.queue_lock = queue_lock
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
-        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageResponse)
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"])
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
-        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageResponse)
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"])
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
-        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse)
+        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"])
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
         self.add_api_route("/sdapi/v1/png-info", self.pnginfoapi, methods=["POST"], response_model=PNGInfoResponse)
         self.add_api_route("/sdapi/v1/progress", self.progressapi, methods=["GET"], response_model=ProgressResponse)
@@ -153,7 +154,7 @@ class Api:
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
-        self.add_api_route("/credits/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
+        self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -307,7 +308,7 @@ class Api:
     
     # get new access token with refresh token
     def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
-        if self.not_authenticated(auth):
+        if self.not_authenticated(auth, db):
             raise HTTPException(status_code=401, detail="The token is not refresh token or invalid")
         
         user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
@@ -492,6 +493,10 @@ class Api:
         if not auth:
             raise exceptions.get_user_exception()
         
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
+        
+        
         # check auth email and if the user has enough credits
         try:
             user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
@@ -523,8 +528,7 @@ class Api:
             b64images = list(map(encode_pil_to_base64, processed.images))
             
             # update credits
-            
-            updateing_creedit_inc = -25*created_images_num # 25 credits per image
+            updateing_creedit_inc = -10*created_images_num # 10 credits per image
             print()
             if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
                 raise exceptions.get_user_exception()
@@ -582,6 +586,10 @@ class Api:
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: dict = Depends(get_current_user)):
         if not auth:
             raise exceptions.get_user_exception()
+        
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
+        
 
         return self.img2imgapi(img2imgreq)
 
@@ -599,6 +607,9 @@ class Api:
         if not auth:
             raise exceptions.get_user_exception()
 
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
+        
         
         return self.extras_single_image_api(req)
 
@@ -740,7 +751,12 @@ class Api:
     def get_artists(self):
         return [{"name":x[0], "score":x[1], "category":x[2]} for x in shared.artist_db.artists]
     
-    def not_authenticated(self, user: dict):
+    def not_authenticated(self, user: dict, db: Session = None):
+        if db:
+            if (user_db := db.query(UsersDB).filter(UsersDB.email == user['email']).first()) is None:
+                print("User is not in database")
+                raise exceptions.get_user_exception()
+        
         if user is None:
             print("User is not authenticated")
             raise exceptions.get_user_exception()
@@ -841,16 +857,25 @@ class Api:
         return credits.read_creds(db)
     
     def read_cred_by_id(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
+        
         self.not_authenticated(user)
         user_email = user.get("email", None)
         return credits.read_creds(db, user_email)
     
-    def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
-        user_email = db.query(models.User).filter(models.User.id == user_id).first().email
-        if user_email != user.get("email", None):
-            raise exceptions.get_user_exception()
+    
+    def update_cred(self, request: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
         
-        return credits.update_cred_by_id(user_email, cred, db)
-    
-    
+        request = request.dict()
+        user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == user.get("email", None)).first()
+        
+        # if the user is not admin, he can only update his own credits
+        if user_admin_db != None or request['email'] == user['email']:
+            print("User is admin or updating his own credits")
+            current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
+            return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
+        else:
+            raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")

@@ -293,7 +293,14 @@ class UpdateUserRequest(BaseModel):
     is_admin: Optional[bool] = Field(default=False)
     
 class UpdateCreditsRequest(BaseModel):
-    credits_inc: Optional[int] = Field(title="Credits")
+    email: str = Field(title="Email")
+    credits_inc: int = Field(title="Credits")
+
+class UpdateCreditsResponse(BaseModel):
+    info: str = Field(title="Info")
+    email: str = Field(title="Email")
+    credits_inc: int = Field(title="Credits Inc")
+    currunt_credits: int = Field(title="Current Credits")
     
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
