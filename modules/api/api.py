@@ -1,15 +1,16 @@
 ''' 할 일
 
 - [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
-- [ ] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
+- [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
 - [ ] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
+- [ ] 4. 생성된 사진 용량 줄여서 저장하기
 
 '''
 
 import base64
 import io
 import time
-import uvicorn
+import uvicorn, json
 from dotenv import load_dotenv
 from threading import Lock
 from io import BytesIO
@@ -49,7 +50,8 @@ from .auth import *
 
 models.Base.metadata.create_all(bind=engine)
 
-DEFAULT_CREDITS = 200
+DEFAULT_CREDITS = 500
+CREDITS_PER_IMAGE = 10
 
 def upscaler_to_index(name: str):
     try:
@@ -106,11 +108,11 @@ class Api:
         self.app = app
         self.queue_lock = queue_lock
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
-        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"])
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageResponse)
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
-        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"])
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
-        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"])
+        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
         self.add_api_route("/sdapi/v1/png-info", self.pnginfoapi, methods=["POST"], response_model=PNGInfoResponse)
         self.add_api_route("/sdapi/v1/progress", self.progressapi, methods=["GET"], response_model=ProgressResponse)
@@ -167,8 +169,8 @@ class Api:
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
-    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(user)
+    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(user)
         print(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
@@ -197,8 +199,8 @@ class Api:
             
         return response
     
-    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(user)
+    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.username == req.username).first():
             raise HTTPException(status_code=400, detail="Username already exists")
         elif len(req.username) < 3:
@@ -217,9 +219,9 @@ class Api:
             db.rollback()
             raise HTTPException(status_code=500, detail="Could not update username")
     
-    def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def delete_user_by_id(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         
-        self.not_authenticated_access_token(user)
+        not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise exceptions.get_admin_exception()
@@ -247,17 +249,17 @@ class Api:
         return read_users(db)
 
     def read_user_by_id(self, user_id: int, 
-                        user: dict = Depends(get_current_user),
+                        user: dict = Depends(access_token_auth),
                         db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(user)
+        not_authenticated_access_token(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
         raise exceptions.get_user_not_found_exception()
 
-    def read_user_info(self, user: dict = Depends(get_current_user),
+    def read_user_info(self, user: dict = Depends(access_token_auth),
                          db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(user)
+        not_authenticated_access_token(user)
         
         try:
             user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
@@ -307,7 +309,7 @@ class Api:
             "token_type": "bearer"}
     
     # get new access token with refresh token
-    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refreshtoken)):
+    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refresh_token_auth)):
         if auth is None:
             raise HTTPException(status_code=400, detail="Invalid refresh token")
         
@@ -325,8 +327,8 @@ class Api:
             "token_type": "bearer"}
     
     # when user logs out, delete refresh token
-    def logout(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(auth)
+    def logout(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
         
         rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == auth["email"]).first()
         if not rtoken:
@@ -352,7 +354,7 @@ class Api:
     
         
 
-    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
+    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
         if not auth:
             raise exceptions.get_user_exception()
         if auth["email"] != user.email:
@@ -425,7 +427,7 @@ class Api:
 
         return {"message": f"User {create_user.username} created successfully"}
     
-    def update_credits(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def update_credits(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         if not auth:
             raise exceptions.get_user_exception()
         user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
@@ -438,8 +440,8 @@ class Api:
         db.commit()
         return {"message": f"Credits updated for user {user.username}"}
     
-    def make_admin(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated_access_token(user)
+    def make_admin(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise exceptions.get_admin_exception()
@@ -486,15 +488,10 @@ class Api:
 
         b64images = list(map(encode_pil_to_base64, processed.images))
 
-        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
+        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
-    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user), db: Session = Depends(get_db)):
-        if not auth:
-            raise exceptions.get_user_exception()
-        
-        if auth['type'] == 'refresh':
-            return self.reissue_access_token(db=db, auth=user)
-        
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
         
         # check auth email and if the user has enough credits
         try:
@@ -502,32 +499,15 @@ class Api:
             if user is None:
                 raise exceptions.get_user_exception()
             created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
-            if user.credits < created_images_num * 25:
+            
+            # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+            if user.credits < created_images_num * CREDITS_PER_IMAGE:
                 raise exceptions.not_enough_credits_exception()
             
-            populate = txt2imgreq.copy(update={ # Override __init__ params
-                "sd_model": shared.sd_model,
-                "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
-                "do_not_save_samples": True,
-                "do_not_save_grid": True
-                }
-            )
-            if populate.sampler_name:
-                populate.sampler_index = None  # prevent a warning later on
-            p = StableDiffusionProcessingTxt2Img(**vars(populate))
-            # Override object param
-
-            shared.state.begin()
-
-            with self.queue_lock:
-                processed = process_images(p)
-
-            shared.state.end()
-
-            b64images = list(map(encode_pil_to_base64, processed.images))
-            
-            # update credits
-            updateing_creedit_inc = -10*created_images_num # 10 credits per image
+            response = self.text2imgapi(txt2imgreq)
+                        
+            # 크레딧 업데이트
+            updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
             print()
             if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
                 raise exceptions.get_user_exception()
@@ -536,10 +516,10 @@ class Api:
             
         except Exception as e:
             db.rollback() # rollback if there is an error
-            print(f"Failed to update credits for user {auth['email']}\n", e)
+            print(f"Failed to update credits for user {auth['email']} ", e)
             raise exceptions.get_user_exception()
         
-        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
+        return response
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
         init_images = img2imgreq.init_images
@@ -548,6 +528,7 @@ class Api:
 
         mask = img2imgreq.mask
         if mask:
+            print(mask[:100])
             mask = decode_base64_to_image(mask)
 
         populate = img2imgreq.copy(update={ # Override __init__ params
@@ -580,17 +561,37 @@ class Api:
             img2imgreq.init_images = None
             img2imgreq.mask = None
 
-        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
+        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=json.loads(processed.js()))
 
-    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: dict = Depends(get_current_user)):
-        if not auth:
+    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
+        
+        try:
+            user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
+            if user is None:
+                raise exceptions.get_user_exception()
+            created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
+            
+            # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+            if user.credits < created_images_num * CREDITS_PER_IMAGE:
+                raise exceptions.not_enough_credits_exception()
+            
+            response = self.img2imgapi(img2imgreq)
+                        
+            # update credits
+            updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
+            print()
+            if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
+                raise exceptions.get_user_exception()
+            
+            print(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
+            
+        except Exception as e:
+            db.rollback() # rollback if there is an error
+            print(f"Failed to update credits for user {auth['email']}\n", e)
             raise exceptions.get_user_exception()
-        
-        if user['type'] == 'refresh':
-            return self.reissue_access_token(db=db, auth=user)
-        
 
-        return self.img2imgapi(img2imgreq)
+        return response
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
         reqDict = setUpscalers(req)
@@ -600,17 +601,14 @@ class Api:
         with self.queue_lock:
             result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", save_output=False, **reqDict)
 
-        return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
+        return ExtrasSingleImageResponse(images=[encode_pil_to_base64(result[0][0])], html_info=result[1])
     
-    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(get_current_user)):
-        if not auth:
-            raise exceptions.get_user_exception()
-
-        if user['type'] == 'refresh':
-            return self.reissue_access_token(db=db, auth=user)
+    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(access_token_auth)):
+        not_authenticated_access_token(auth)
         
+        response = self.extras_single_image_api(req)
         
-        return self.extras_single_image_api(req)
+        return response
 
     def extras_batch_images_api(self, req: ExtrasBatchImagesRequest):
         reqDict = setUpscalers(req)
@@ -856,16 +854,16 @@ class Api:
     def read_all_creds(self, db: Session = Depends(get_db)):
         return credits.read_creds(db)
     
-    def read_cred_by_id(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def read_cred_by_id(self, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         if user['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=user)
         
-        self.not_authenticated_access_token(user)
+        not_authenticated_access_token(user)
         user_email = user.get("email", None)
         return credits.read_creds(db, user_email)
     
     
-    def update_cred(self, request: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def update_cred(self, request: UpdateCreditsRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         if user['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=user)
         

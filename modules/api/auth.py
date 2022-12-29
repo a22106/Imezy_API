@@ -15,22 +15,22 @@ from jose import JWTError, jwt, ExpiredSignatureError
 
 from . import exceptions
 from .database import get_db
+from sqlalchemy.orm import Session
 
 
 SECRET_KEY_ACCESS = "secret_api_key"
 SECRET_KEY_REFRESH = "secret_refresh"
 ALGORITHM_ACCESS = "HS256"
 ALGORITHM_REFRESH = "HS384"
-ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(minutes=1)
+ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(minutes=120)
 REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
 
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def get_current_user(token: str = Depends(oauth2_bearer)):
+def access_token_auth(token: str = Depends(oauth2_bearer)):
     try:
-        # if access token is expired, it will raise JWTError
         payload = jwt.decode(token, SECRET_KEY_ACCESS, algorithms=[ALGORITHM_ACCESS])
         print(f"email: {payload.get('email')}, user_id: {payload.get('user_id')}, connected")
         t_type: str = payload.get("type")
@@ -38,19 +38,21 @@ def get_current_user(token: str = Depends(oauth2_bearer)):
         email: str = payload.get("email")
         user_id: int = payload.get("user_id")
         
-        if email is None or user_id is None:
+        if email is None or user_id is None: # 키가 잘못된 경우
             print("get_current_user: email or user_id is None")
             raise exceptions.get_user_exception()
         
-        return {"email": email, "user_id": user_id, "type": t_type}
-    except ExpiredSignatureError:
+        return {"email": email, "user_id": user_id, "type": t_type} # 토큰이 유효한 경우
+    
+    except ExpiredSignatureError: # 토큰이 만료된 경우
         print("Access token is expired")
         raise exceptions.access_token_expired_exception()
-    except JWTError: # JWTError happens when token is expired or invalid
+    
+    except JWTError: # 토큰이 유효하지 않은 경우
         print("Access token is invalid")
         raise exceptions.get_jwt_exception()
     
-def refreshtoken(token: str = Depends(oauth2_bearer)):
+def refresh_token_auth(token: str = Depends(oauth2_bearer)):
     try:
         # if access token is expired, it will raise JWTError
         payload = jwt.decode(token, SECRET_KEY_REFRESH, algorithms=[ALGORITHM_REFRESH])
@@ -104,6 +106,30 @@ def create_refresh_token(email: str, user_id: int,
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY_REFRESH, algorithm=ALGORITHM_REFRESH)
     
     return encoded_jwt
+
+def not_authenticated_access_token(auth: dict, db: Session = None):
+    '''
+    description:
+        - check if user is authenticated or not
+        - raise exception if user is not authenticated
+    args:
+        - auth: dict = {email: str, user_id: int, type: str}
+        - db: Session = database session
+    return:
+        - bool = True if user is authenticated, False if user is not authenticated
+    '''
+    
+    if db:
+        if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth['email']).first()) is None:
+            print("User is not in database")
+            raise exceptions.get_user_exception()
+    
+    if auth is None:
+        print("User is not authenticated")
+        raise exceptions.get_user_exception()
+    if auth['type'] == 'refresh':
+        return False
+    return True
 
 def get_password_hashed(password):
     return bcrypt_context.hash(password)
