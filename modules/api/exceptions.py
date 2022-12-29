@@ -49,19 +49,27 @@ def get_admin_exception():
 def get_jwt_exception():
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. the token is expired or invalid",
+        detail="Could not validate credentials. The access token is expired or invalid",
         headers={"WWW-Authenticate": "Bearer"},
     )
     return credentials_exception
 
-def get_jwt_expired_exception():
+def access_token_expired_exception():
     expired_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. the token is expired",
+        detail="The access token is expired",
         headers={"WWW-Authenticate": "Bearer"},
     )
     return expired_exception
 
+def refresh_token_expired_exception():
+    expired_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="The refresh token is expired or invalid, please login again",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    return expired_exception
+    
 def token_exception():
     token_exception_response = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -70,10 +78,18 @@ def token_exception():
     )
     return token_exception_response
 
+def refresh_token_exception():
+    refresh_token_exception_response = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="The refresh token is expired or invalid, please login again",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    return refresh_token_exception_response
+
 
 def not_enough_credits_exception():
     credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
         detail="Could not validate credentials. not enough credits",
         headers={"WWW-Authenticate": "Bearer"},
     )

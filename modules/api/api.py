@@ -168,7 +168,7 @@ class Api:
     #     return {"response_codes": Responses.res_codes}
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         print(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
@@ -198,7 +198,7 @@ class Api:
         return response
     
     def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.username == req.username).first():
             raise HTTPException(status_code=400, detail="Username already exists")
         elif len(req.username) < 3:
@@ -219,7 +219,7 @@ class Api:
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise exceptions.get_admin_exception()
@@ -249,7 +249,7 @@ class Api:
     def read_user_by_id(self, user_id: int, 
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
@@ -257,7 +257,7 @@ class Api:
 
     def read_user_info(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         
         try:
             user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
@@ -307,27 +307,26 @@ class Api:
             "token_type": "bearer"}
     
     # get new access token with refresh token
-    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
-        if self.not_authenticated(auth, db):
-            raise HTTPException(status_code=401, detail="The token is not refresh token or invalid")
+    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refreshtoken)):
+        if auth is None:
+            raise HTTPException(status_code=400, detail="Invalid refresh token")
         
-        user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
-        if not user:
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.owner_email == auth["email"]).first()
+        if not user_db:
             raise exceptions.token_exception()
         
-        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user.email).first()
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user_db.email).first()
         if not rtoken:
             raise exceptions.token_exception()
         
-        
-        access_token = create_access_token(email=user.email, user_id=user.id)
+        access_token = create_access_token(email=user_db.email, user_id=user_db.id)
         return {
             "access_token": access_token, 
             "token_type": "bearer"}
     
     # when user logs out, delete refresh token
     def logout(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(auth)
+        self.not_authenticated_access_token(auth)
         
         rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == auth["email"]).first()
         if not rtoken:
@@ -440,7 +439,7 @@ class Api:
         return {"message": f"Credits updated for user {user.username}"}
     
     def make_admin(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise exceptions.get_admin_exception()
@@ -476,8 +475,8 @@ class Api:
         if populate.sampler_name:
             populate.sampler_index = None  # prevent a warning later on
         p = StableDiffusionProcessingTxt2Img(**vars(populate))
+        
         # Override object param
-
         shared.state.begin()
 
         with self.queue_lock:
@@ -493,7 +492,7 @@ class Api:
         if not auth:
             raise exceptions.get_user_exception()
         
-        if user['type'] == 'refresh':
+        if auth['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=user)
         
         
@@ -751,17 +750,18 @@ class Api:
     def get_artists(self):
         return [{"name":x[0], "score":x[1], "category":x[2]} for x in shared.artist_db.artists]
     
-    def not_authenticated(self, user: dict, db: Session = None):
+    def not_authenticated_access_token(self, auth: dict, db: Session = None):
         if db:
-            if (user_db := db.query(UsersDB).filter(UsersDB.email == user['email']).first()) is None:
+            if (user_db := db.query(UsersDB).filter(UsersDB.email == auth['email']).first()) is None:
                 print("User is not in database")
                 raise exceptions.get_user_exception()
         
-        if user is None:
+        if auth is None:
             print("User is not authenticated")
             raise exceptions.get_user_exception()
-        if user['type'] == 'refresh':
+        if auth['type'] == 'refresh':
             return False
+    
 
     def refresh_checkpoints(self):
         shared.refresh_checkpoints()
@@ -860,7 +860,7 @@ class Api:
         if user['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=user)
         
-        self.not_authenticated(user)
+        self.not_authenticated_access_token(user)
         user_email = user.get("email", None)
         return credits.read_creds(db, user_email)
     
