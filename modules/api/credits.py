@@ -57,6 +57,6 @@ def update_cred(owner_email: str, cred_inc: int, db: Session):
     except Exception as e:
         db.rollback()
         print("Error: ", e)
-        return False
+        return -1
     
     return current_cred_db.credits

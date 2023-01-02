@@ -47,6 +47,7 @@ from . import Responses as Res
 
 from .users import *
 from .auth import *
+from .logs import print_message
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -171,7 +172,7 @@ class Api:
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
-        print(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
+        print_message(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
         elif db.query(models.UsersDB).filter(models.UsersDB.email == req.email).first():
@@ -180,7 +181,7 @@ class Api:
         current_email = user['email']
         user_db = db.query(models.UsersDB).filter(models.UsersDB.email == current_email).first()
         if user_db is None:
-            print(f"The token is invalid({current_email}). Please login again.")
+            print_message(f"The token is invalid({current_email}). Please login again.")
             raise HTTPException(status_code=401, detail=f"The token is invalid({current_email}). Please login again.")
         user_db.email = req.email
         db.commit()
@@ -213,7 +214,7 @@ class Api:
         user_info.username = req.username
         try:
             db.commit()
-            print(f"Username updated to {req.username} successfully")
+            print_message(f"Username updated to {req.username} successfully")
             return {"message": "Username updated to '{}' successfully".format(req.username)}
         except AttributeError:
             db.rollback()
@@ -223,7 +224,7 @@ class Api:
         
         not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
-            print("User is not admin")
+            print_message("User is not admin")
             raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
@@ -233,7 +234,7 @@ class Api:
             db.delete(credits_info)
             db.delete(user_info)
             db.commit()
-            print(f"User {user_id}:{username} deleted")
+            print_message(f"User {user_id}:{username} deleted")
             return {"message": f"User {user_id}:{username} deleted"}
         raise exceptions.get_user_not_found_exception()
     
@@ -269,7 +270,7 @@ class Api:
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
         user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info["email"]).first().__dict__["credits"]
-        print(f'Read user info: {user_info["email"]}')
+        print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
     def authenticate_user(self, email, password, db):
@@ -373,10 +374,10 @@ class Api:
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.username == create_user.username).first())
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
         if is_exist[0]:
-            print(f"The username '{create_user.username}' is already in use")
+            print_message(f"The username '{create_user.username}' is already in use")
             raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use")
         elif is_exist[1]:
-            print(f"The email {create_user.email} is already in use")
+            print_message(f"The email {create_user.email} is already in use")
             raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use")
         
         create_user_model = models.UsersDB()
@@ -385,11 +386,11 @@ class Api:
         create_user_model.is_active = create_user.is_active
         create_user_model.hashed_password = get_password_hashed(create_user.password)
         create_user_model.is_admin = create_user.is_admin
-        print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
+        print_message(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
         try:
             db.commit()
-            print(f'User {create_user_model.email} created successfully')
+            print_message(f'User {create_user_model.email} created successfully')
             if create_user.is_admin:
                 add_admin = models.UsersAdminDB()
                 add_admin.email = create_user.email.lower()
@@ -397,11 +398,11 @@ class Api:
                 db.commit()
         except exc.IntegrityError:
             db.rollback()
-            print("User already exist")
+            print_message("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         except FlushError:
             db.rollback()
-            print(f"User already exist")
+            print_message(f"User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         
         
@@ -411,18 +412,18 @@ class Api:
         
         try:
             db.commit()
-            print(f'Credits for user {create_user_model.email} created successfully')
+            print_message(f'Credits for user {create_user_model.email} created successfully')
         except exc.IntegrityError:
             db.rollback()
             db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
             db.commit()
-            print(f"Failed to create credits for the user {create_user_model.email}")
+            print_message(f"Failed to create credits for the user {create_user_model.email}")
             raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
         except FlushError:
             db.rollback()
             db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
             db.commit()
-            print(f"Failed to create credits for the user {create_user_model.email}")
+            print_message(f"Failed to create credits for the user {create_user_model.email}")
             raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
 
         return {"message": f"User {create_user.username} created successfully"}
@@ -443,14 +444,14 @@ class Api:
     def make_admin(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
-            print("User is not admin")
+            print_message("User is not admin")
             raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             user_info.is_admin = True
             db.commit()
-            print(f"User {user_id}:{user_info.username} is now admin")
+            print_message(f"User {user_id}:{user_info.username} is now admin")
             return {"message": f"User {user_id}:{user_info.username} is now admin"}
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -490,35 +491,32 @@ class Api:
 
         return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
-    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
         
         # check auth email and if the user has enough credits
-        try:
-            user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
-            if user is None:
-                raise exceptions.get_user_exception()
-            created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
-            
-            # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
-            if user.credits < created_images_num * CREDITS_PER_IMAGE:
-                raise exceptions.not_enough_credits_exception()
-            
-            response = self.text2imgapi(txt2imgreq)
-                        
-            # 크레딧 업데이트
-            updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
-            print()
-            if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
-                raise exceptions.get_user_exception()
-            
-            print(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
-            
-        except Exception as e:
-            db.rollback() # rollback if there is an error
-            print(f"Failed to update credits for user {auth['email']} ", e)
+        
+        user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
+        if user is None:
+            print("1. user is None")
+            raise exceptions.get_user_exception()
+        created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
+        
+        # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+        if user.credits < created_images_num * CREDITS_PER_IMAGE:
+            raise exceptions.not_enough_credits_exception()
+        
+        response = self.text2imgapi(txt2imgreq)
+
+        # 크레딧 업데이트
+        updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
+        print()
+        if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == -1:
+            print("2. update_cred is False")
             raise exceptions.get_user_exception()
         
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
+            
         return response
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
@@ -528,7 +526,7 @@ class Api:
 
         mask = img2imgreq.mask
         if mask:
-            print(mask[:100])
+            print_message(mask[:100])
             mask = decode_base64_to_image(mask)
 
         populate = img2imgreq.copy(update={ # Override __init__ params
@@ -563,7 +561,8 @@ class Api:
 
         return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=json.loads(processed.js()))
 
-    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
+                        auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
         
         try:
@@ -580,15 +579,15 @@ class Api:
                         
             # update credits
             updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
-            print()
+            print_message()
             if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
                 raise exceptions.get_user_exception()
             
-            print(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
+            print_message(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
             
         except Exception as e:
             db.rollback() # rollback if there is an error
-            print(f"Failed to update credits for user {auth['email']}\n", e)
+            print_message(f"Failed to update credits for user {auth['email']}\n", e)
             raise exceptions.get_user_exception()
 
         return response
@@ -603,7 +602,8 @@ class Api:
 
         return ExtrasSingleImageResponse(images=[encode_pil_to_base64(result[0][0])], html_info=result[1])
     
-    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(access_token_auth)):
+    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, 
+                                     auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
         
         response = self.extras_single_image_api(req)
@@ -751,11 +751,11 @@ class Api:
     def not_authenticated_access_token(self, auth: dict, db: Session = None):
         if db:
             if (user_db := db.query(UsersDB).filter(UsersDB.email == auth['email']).first()) is None:
-                print("User is not in database")
+                print_message("User is not in database")
                 raise exceptions.get_user_exception()
         
         if auth is None:
-            print("User is not authenticated")
+            print_message("User is not authenticated")
             raise exceptions.get_user_exception()
         if auth['type'] == 'refresh':
             return False
@@ -872,7 +872,7 @@ class Api:
         
         # if the user is not admin, he can only update his own credits
         if user_admin_db != None or request['email'] == user['email']:
-            print("User is admin or updating his own credits")
+            print_message("User is admin or updating his own credits")
             current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
             return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
         else:
