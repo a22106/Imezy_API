@@ -14,11 +14,11 @@ def read_creds(db: Session, owner_email: int = None):
         A list of credentials.
     """
     if owner_email:
-        return db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == owner_email).all()
+        return db.query(models.CreditsDB).filter(models.CreditsDB.email == owner_email).all()
     return db.query(models.CreditsDB).all()
 
 def update_cred_by_id(owner_email: str, cred: UpdateCreditsRequest, db: Session):
-    current_cred_db = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == owner_email).first()
+    current_cred_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == owner_email).first()
     current_cred_db.credits = current_cred_db.credits + cred.credits_inc
     current_cred_db.last_updated = datetime.utcnow()
     db.add(current_cred_db)
@@ -39,13 +39,13 @@ def update_cred(owner_email: str, cred_inc: int, db: Session):
         cred_inc: The new credits.
     '''
     
-    current_cred_db = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == owner_email).first()
+    current_cred_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == owner_email).first()
     current_cred_db.credits = current_cred_db.credits + cred_inc
     current_cred_db.last_updated = datetime.utcnow()
     db.add(current_cred_db)
     
     update_cred_db = models.CreditsUpdateDB()
-    update_cred_db.owner_email = owner_email
+    update_cred_db.email = owner_email
     update_cred_db.credits_inc = cred_inc
     update_cred_db.updated = current_cred_db.last_updated
     db.add(update_cred_db)

@@ -328,8 +328,8 @@ class UsersDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_date = Column(DateTime, default=datetime.utcnow)
@@ -341,7 +341,7 @@ class CreditsDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
     last_updated = Column(DateTime, default=datetime.utcnow)
-    owner_email = Column(String, ForeignKey("users.email"))
+    email = Column(String, ForeignKey("users.email"))
     
     
 class UsersAdminDB(Base):
@@ -356,14 +356,22 @@ class RefreshTokenDB(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String, unique=True, index=True)
-    owner_email = Column(String, ForeignKey("users.email"))
+    email = Column(String, ForeignKey("users.email"))
     
 class CreditsUpdateDB(Base):
     __tablename__ = "credits_update"
     
     id = Column(Integer, primary_key=True, index=True)
-    owner_email = Column(String, ForeignKey("users.email"))
+    email = Column(String, ForeignKey("users.email"))
     credits_inc = Column(Integer, default=0)
     updated = Column(DateTime, default=datetime.utcnow)
     
+class ImezyUpdateDB(Base):
+    __tablename__ = "imezy_update"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    imezy_id = Column(String, default="")
+    updated = Column(DateTime, default=datetime.utcnow)
+    num_imgs = Column(Integer, nullable=False)
     

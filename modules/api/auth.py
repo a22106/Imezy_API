@@ -59,7 +59,7 @@ def refresh_token_auth(token: str = Depends(oauth2_bearer)):
         token
         db = next(get_db())
         
-        r_token_db = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == payload.get('email')).first()
+        r_token_db = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == payload.get('email')).first()
         
         if r_token_db.token != token:
             print("Refresh token is invalid")

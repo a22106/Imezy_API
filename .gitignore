@@ -4,6 +4,7 @@ __pycache__
 *.pth
 *.db
 .env
+/generated/*
 /ESRGAN/*
 /SwinIR/*
 /repositories

@@ -8,7 +8,7 @@
 '''
 
 import base64
-import io
+import io, os
 import time
 import uvicorn, json
 from dotenv import load_dotenv
@@ -43,7 +43,6 @@ from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 from . import models, credits
-from . import Responses as Res
 
 from .users import *
 from .auth import *
@@ -53,6 +52,8 @@ models.Base.metadata.create_all(bind=engine)
 
 DEFAULT_CREDITS = 500
 CREDITS_PER_IMAGE = 10
+with open('modules/api/configs.json', 'r') as f:
+    IMEZY_CONFIG = json.load(f)
 
 def upscaler_to_index(name: str):
     try:
@@ -198,7 +199,6 @@ class Api:
             db.rollback()
             raise HTTPException(status_code=500, detail="Could not update email")
 
-            
         return response
     
     def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -230,7 +230,7 @@ class Api:
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         username = user_info.username
-        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info.email).first()
+        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info.email).first()
         if user_info is not None:
             db.delete(credits_info)
             db.delete(user_info)
@@ -270,7 +270,7 @@ class Api:
         
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info["email"]).first().__dict__["credits"]
+        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
@@ -292,12 +292,12 @@ class Api:
         access_token = create_access_token(email=user.email, user_id=user.id)
         refresh_token = create_refresh_token(email=user.email, user_id=user.id)
         
-        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user.email).first()
+        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user.email).first()
         # check if user has a refresh token is outdated
         if not former_rtoken:
             new_rtoken = models.RefreshTokenDB()
             new_rtoken.token = refresh_token
-            new_rtoken.owner_email = user.email
+            new_rtoken.email = user.email
             
             db.add(new_rtoken)
             db.commit()
@@ -315,11 +315,11 @@ class Api:
         if auth is None:
             raise HTTPException(status_code=400, detail="Invalid refresh token")
         
-        user_db = db.query(models.UsersDB).filter(models.UsersDB.owner_email == auth["email"]).first()
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
         if not user_db:
             raise exceptions.token_exception()
         
-        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == user_db.email).first()
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
         if not rtoken:
             raise exceptions.token_exception()
         
@@ -332,7 +332,7 @@ class Api:
     def logout(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
         
-        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.owner_email == auth["email"]).first()
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == auth["email"]).first()
         if not rtoken:
             raise exceptions.token_exception()
         
@@ -408,7 +408,7 @@ class Api:
         
         
         new_credit = models.CreditsDB()
-        new_credit.owner_email = create_user_model.email
+        new_credit.email = create_user_model.email
         db.add(new_credit)
         
         try:
@@ -495,26 +495,41 @@ class Api:
         
         # check auth email and if the user has enough credits
         
-        user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
-        if user is None:
-            print("1. user is None")
+        user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
+        if user_db is None:
+            print_message("user is None exception")
             raise exceptions.get_user_exception()
         created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
         
         # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
-        if user.credits < created_images_num * CREDITS_PER_IMAGE:
+        if user_db.credits < created_images_num * CREDITS_PER_IMAGE:
             raise exceptions.not_enough_credits_exception()
         
         response = self.text2imgapi(txt2imgreq)
+        
+        # 이미지 생성 저장(json)
+        now = datetime.now().strftime('%Y%m%d%H%M%s')
+        if os.path.exists(f"generated/t2i/{auth['email']}") == False:
+            os.makedirs(f"generated/t2i/{auth['email']}")
+        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
+            json.dump(json.loads(response.json()), f, indent=4)
+            
+        # 이미지 생성 데이터베이스 기록
+        imezy_update_db = models.ImezyUpdateDB()
+        imezy_update_db.email = auth['email']
+        imezy_update_db.imezy_id = IMEZY_CONFIG["imezy_id"]['t2i']
+        imezy_update_db.num_imgs = created_images_num
+        imezy_update_db.updated = now
+        db.add(imezy_update_db)
 
         # 크레딧 업데이트
         updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
         print()
-        if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == -1:
-            print("2. update_cred is False")
+        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == -1:
+            print_message(f"{auth['email']}'s update_cred failed")
             raise exceptions.get_user_exception()
         
-        print_message(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
             
         return response
 
@@ -562,7 +577,7 @@ class Api:
         not_authenticated_access_token(auth)
         
         try:
-            user = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == auth["email"]).first()
+            user = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
             if user is None:
                 raise exceptions.get_user_exception()
             created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
@@ -572,11 +587,16 @@ class Api:
                 raise exceptions.not_enough_credits_exception()
             
             response = self.img2imgapi(img2imgreq)
-                        
+                     
+            # save the response to the database
+            now = datetime.now().strftime('%Y%m%d%H%M%S%f')
+            with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
+                json.dump(response, f, indent=4)
+               
             # update credits
             updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
             print_message()
-            if credits.update_cred(user.owner_email, updateing_creedit_inc, db) == False:
+            if credits.update_cred(user.email, updateing_creedit_inc, db) == False:
                 raise exceptions.get_user_exception()
             
             print_message(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
