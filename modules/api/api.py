@@ -4,6 +4,7 @@
 - [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
 - [ ] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
 - [ ] 4. 생성된 사진 용량 줄여서 저장하기
+- [ ] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
 
 '''
 
@@ -160,7 +161,7 @@ class Api:
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
         
-        self.add_api_route("/imege/search", self.search_image, methods=["GET"])
+        self.add_api_route("/image/search", self.search_image, methods=["GET"])
         # self.add_api_route("/imege/delete", self.delete_image, methods=["DELETE"])
         
         @self.app.exception_handler(AuthJWTException)
@@ -176,20 +177,26 @@ class Api:
     
     def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
+        print_message("search_image", auth)
+        
         imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
         if imezy_update_db is None:
             return {"image": None}
         
         response = []
         for i, row in enumerate(imezy_update_db):
-            updated = datetime.strptime(row.updated, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
+            updated = datetime.strptime(str(row.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
             
-            # 이미지 저장된 json 파일 읽기
-            with open(f"generated/{auth.email}/{updated}.json", "r") as f:
-                data = json.load(f)
+            try:
+                # 이미지 저장된 json 파일 읽기
+                with open(f"generated/{IMEZY_CONFIG['imezy_id1'][str(row.imezy_id)]}/{auth['email']}/{updated}.json", "r") as f:
+                    data = json.load(f)
+                if data["images"]:
+                    response.append({"images": data["images"], "updated": row.updated})
+            except FileNotFoundError:
+                print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
                 
-            if data["images"]:
-                response.append({"images": data["images"], "updated": row.updated})
+                
         return response
         
     
@@ -532,7 +539,7 @@ class Api:
         now = datetime.now().strftime('%Y%m%d%H%M%S')
         if os.path.exists(f"generated/t2i/{auth['email']}") == False:
             os.makedirs(f"generated/t2i/{auth['email']}")
-        with open(f"generated/t2i/{now}.json", "w") as f:
+        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
             json.dump(json.loads(response.json()), f, indent=4)
             
         # 이미지 생성 데이터베이스 기록
