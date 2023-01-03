@@ -152,7 +152,6 @@ class Api:
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"], response_model=UpdatePasswordResponse)
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
-        
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
@@ -160,6 +159,9 @@ class Api:
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
+        
+        self.add_api_route("/imege/search", self.search_image, methods=["GET"])
+        # self.add_api_route("/imege/delete", self.delete_image, methods=["DELETE"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -171,6 +173,25 @@ class Api:
         
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
+    
+    def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
+        imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
+        if imezy_update_db is None:
+            return {"image": None}
+        
+        response = []
+        for i, row in enumerate(imezy_update_db):
+            updated = datetime.strptime(row.updated, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
+            
+            # 이미지 저장된 json 파일 읽기
+            with open(f"generated/{auth.email}/{updated}.json", "r") as f:
+                data = json.load(f)
+                
+            if data["images"]:
+                response.append({"images": data["images"], "updated": row.updated})
+        return response
+        
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
@@ -508,10 +529,10 @@ class Api:
         response = self.text2imgapi(txt2imgreq)
         
         # 이미지 생성 저장(json)
-        now = datetime.now().strftime('%Y%m%d%H%M%s')
+        now = datetime.now().strftime('%Y%m%d%H%M%S')
         if os.path.exists(f"generated/t2i/{auth['email']}") == False:
             os.makedirs(f"generated/t2i/{auth['email']}")
-        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
+        with open(f"generated/t2i/{auth['email']}/{datetime.strptime(now, '%Y%m%d_%H%M%S').strftime('%Y%m%d_%H%M%S')}.json", "w") as f:
             json.dump(json.loads(response.json()), f, indent=4)
             
         # 이미지 생성 데이터베이스 기록
