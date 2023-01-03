@@ -532,7 +532,7 @@ class Api:
         now = datetime.now().strftime('%Y%m%d%H%M%S')
         if os.path.exists(f"generated/t2i/{auth['email']}") == False:
             os.makedirs(f"generated/t2i/{auth['email']}")
-        with open(f"generated/t2i/{auth['email']}/{datetime.strptime(now, '%Y%m%d_%H%M%S').strftime('%Y%m%d_%H%M%S')}.json", "w") as f:
+        with open(f"generated/t2i/{now}.json", "w") as f:
             json.dump(json.loads(response.json()), f, indent=4)
             
         # 이미지 생성 데이터베이스 기록
@@ -545,7 +545,6 @@ class Api:
 
         # 크레딧 업데이트
         updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
-        print()
         if credits.update_cred(user_db.email, updateing_creedit_inc, db) == -1:
             print_message(f"{auth['email']}'s update_cred failed")
             raise exceptions.get_user_exception()
@@ -594,38 +593,36 @@ class Api:
         return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=json.loads(processed.js()))
 
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
-                        auth: bool = Depends(access_token_auth), db: Session = Depends(get_db)):
+                        auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
         
-        try:
-            user = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
-            if user is None:
-                raise exceptions.get_user_exception()
-            created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
-            
-            # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
-            if user.credits < created_images_num * CREDITS_PER_IMAGE:
-                raise exceptions.not_enough_credits_exception()
-            
-            response = self.img2imgapi(img2imgreq)
-                     
-            # save the response to the database
-            now = datetime.now().strftime('%Y%m%d%H%M%S%f')
-            with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
-                json.dump(response, f, indent=4)
-               
-            # update credits
-            updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
-            print_message()
-            if credits.update_cred(user.email, updateing_creedit_inc, db) == False:
-                raise exceptions.get_user_exception()
-            
-            print_message(f"User {auth['email']} is generating an image. Credits left: {user.credits}")
-            
-        except Exception as e:
-            db.rollback() # rollback if there is an error
-            print_message(f"Failed to update credits for user {auth['email']}\n", e)
+        
+        user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
+        if user_db is None:
+            print_message("user is None exception")
             raise exceptions.get_user_exception()
+        created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
+        
+        # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+        if user_db.credits < created_images_num * CREDITS_PER_IMAGE:
+            raise exceptions.not_enough_credits_exception()
+        
+        response = self.img2imgapi(img2imgreq)
+                    
+        # save the response to the database
+        now = datetime.now().strftime('%Y%m%d%H%M%S')
+        if os.path.exists(f"generated/t2i/{auth['email']}") == False:
+            os.makedirs(f"generated/t2i/{auth['email']}")
+        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
+            json.dump(json.loads(response.json()), f, indent=4)
+
+        # update credits
+        updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
+        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == False:
+            raise exceptions.get_user_exception()
+        
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}")
+            
 
         return response
 
