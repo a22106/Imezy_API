@@ -532,7 +532,7 @@ class Api:
         now = datetime.now().strftime('%Y%m%d%H%M%S')
         if os.path.exists(f"generated/t2i/{auth['email']}") == False:
             os.makedirs(f"generated/t2i/{auth['email']}")
-        with open(f"generated/t2i/{now}.json", "w") as f:
+        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
             json.dump(json.loads(response.json()), f, indent=4)
             
         # 이미지 생성 데이터베이스 기록
