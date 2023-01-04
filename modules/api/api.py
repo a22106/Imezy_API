@@ -15,6 +15,7 @@ import uvicorn, json
 from dotenv import load_dotenv
 from threading import Lock
 from io import BytesIO
+
 from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
@@ -162,7 +163,7 @@ class Api:
         self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
         
         self.add_api_route("/image/search", self.search_image, methods=["GET"])
-        # self.add_api_route("/imege/delete", self.delete_image, methods=["DELETE"])
+        self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -189,16 +190,38 @@ class Api:
             
             try:
                 # 이미지 저장된 json 파일 읽기
-                with open(f"generated/{IMEZY_CONFIG['imezy_id1'][str(row.imezy_id)]}/{auth['email']}/{updated}.json", "r") as f:
+                with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
                     data = json.load(f)
                 if data["images"]:
-                    response.append({"images": data["images"], "updated": row.updated})
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images"] })
             except FileNotFoundError:
                 print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
                 
                 
         return response
+    
+    def delete_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
+        print_message(f"Delete image user: {auth['email']}, image_id: {image_id}")
         
+        try:
+            image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
+            if image_db is None:
+                return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} is not exist"}
+            
+            image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
+            image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
+            os.remove(f"generated/{image_type}/{auth['email']}/{image_updated}.json")
+            db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).delete()
+            db.commit()
+        except Exception as e:
+            print_message(e)
+            db.rollback()
+            print_message(f"Delete image user: {auth['email']}, image_id: {image_id} failed")
+            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} failed"}
+        else:
+            print_message(f"Delete image user: {auth['email']}, image_id: {image_id} success")
+            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} success"}
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
@@ -534,18 +557,20 @@ class Api:
             raise exceptions.not_enough_credits_exception()
         
         response = self.text2imgapi(txt2imgreq)
+        response_json = json.loads(response.json())
         
         # 이미지 생성 저장(json)
         now = datetime.now().strftime('%Y%m%d%H%M%S')
         if os.path.exists(f"generated/t2i/{auth['email']}") == False:
             os.makedirs(f"generated/t2i/{auth['email']}")
+            
         with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
-            json.dump(json.loads(response.json()), f, indent=4)
+            json.dump(response_json, f, indent=4)
             
         # 이미지 생성 데이터베이스 기록
         imezy_update_db = models.ImezyUpdateDB()
         imezy_update_db.email = auth['email']
-        imezy_update_db.imezy_id = IMEZY_CONFIG["imezy_id"]['t2i']
+        imezy_update_db.imezy_type = IMEZY_CONFIG["imezy_type"]['t2i']
         imezy_update_db.num_imgs = created_images_num
         imezy_update_db.updated = now
         db.add(imezy_update_db)

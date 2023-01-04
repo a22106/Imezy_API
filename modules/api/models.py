@@ -313,6 +313,9 @@ class UpdateCreditsResponse(BaseModel):
     credits_inc: int = Field(title="Credits Inc")
     currunt_credits: int = Field(title="Current Credits")
     
+class DeleteImageRequest(BaseModel):
+    image_id: int = Field(title="Image ID")
+    
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
     SECRET_KEY_REFRESH = "secret_refresh"
@@ -371,7 +374,7 @@ class ImezyUpdateDB(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
-    imezy_id = Column(String, default="")
+    imezy_type = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.utcnow)
     num_imgs = Column(Integer, nullable=False)
     
