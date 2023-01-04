@@ -1,7 +1,8 @@
 import os, sys
 from datetime import datetime
 
-SERVER_START = datetime.now().utcnow().strftime('%Y%m%d_%H%M%S')
+SERVER_START = datetime.now().strftime('%Y%m%d_%H%M%S')
+
 
 if os.path.exists('./logs') == False:
         os.mkdir('./logs')
@@ -31,3 +32,5 @@ def print_message(*args):
 def current_time():
     now = datetime.now().utcnow().strftime('%y-%m-%d %H:%M:%S')
     return now
+
+print_message('Server start time: ', SERVER_START)

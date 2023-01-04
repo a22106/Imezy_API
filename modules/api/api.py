@@ -164,6 +164,7 @@ class Api:
         
         self.add_api_route("/image/search", self.search_image, methods=["GET"])
         self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
+        self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -196,7 +197,8 @@ class Api:
                     response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images"] })
             except FileNotFoundError:
                 print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
-                
+                return exceptions.get_file_not_exist_exception()
+                 
                 
         return response
     
@@ -204,24 +206,52 @@ class Api:
         not_authenticated_access_token(auth)
         print_message(f"Delete image user: {auth['email']}, image_id: {image_id}")
         
+        image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
+        if image_db is None:
+            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} is not exist"}
+        elif image_db.email != auth['email']:
+            return exceptions.get_inappropriate_user_exception()
+        
+        image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
+        image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
         try:
-            image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
-            if image_db is None:
-                return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} is not exist"}
-            
-            image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
-            image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
             os.remove(f"generated/{image_type}/{auth['email']}/{image_updated}.json")
+        except FileNotFoundError:
+            print_message(f"Delete image file image_id: {image_id} is not exist")
+            return HTTPException(status_code=404, detail=f"Delete image file image_id: {image_id} is not exist")
+        try:
             db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).delete()
             db.commit()
         except Exception as e:
             print_message(e)
             db.rollback()
             print_message(f"Delete image user: {auth['email']}, image_id: {image_id} failed")
-            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} failed"}
-        else:
-            print_message(f"Delete image user: {auth['email']}, image_id: {image_id} success")
-            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} success"}
+            return HTTPException(status_code=404, detail=f"Delete image user: {auth['email']}, image_id: {image_id} failed")
+        
+        print_message(f"Delete image user: {auth['email']}, image_id: {image_id} success")
+        return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} success"}
+        
+    def download_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db), req: DownloadImageRequest = Depends()):
+        not_authenticated_access_token(auth)
+        print_message(f"Download image user: {auth['email']}, image_id: {image_id}")
+        
+        image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
+        if image_db is None:
+            return HTTPException(status_code=404, detail=f"Download image user: {auth['email']}, image_id: {image_id} is not exist on db")
+        elif image_db.email != auth['email']:
+            return exceptions.get_inappropriate_user_exception()
+        
+        image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
+        image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
+        try:
+            with open(f"generated/{image_type}/{auth['email']}/{image_updated}.json", "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return HTTPException(status_code=404, detail=f"Download image user: {auth['email']}, image_id: {image_id} {image_updated}.json is not exist on file")
+            
+        if data["images"]:
+            return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
+        
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
@@ -640,13 +670,22 @@ class Api:
             raise exceptions.not_enough_credits_exception()
         
         response = self.img2imgapi(img2imgreq)
+        response_json = json.loads(response.json())
                     
         # save the response to the database
         now = datetime.now().strftime('%Y%m%d%H%M%S')
-        if os.path.exists(f"generated/t2i/{auth['email']}") == False:
-            os.makedirs(f"generated/t2i/{auth['email']}")
-        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
-            json.dump(json.loads(response.json()), f, indent=4)
+        if os.path.exists(f"generated/i2i/{auth['email']}") == False:
+            os.makedirs(f"generated/i2i/{auth['email']}")
+        with open(f"generated/i2i/{auth['email']}/{now}.json", "w") as f:
+            json.dump(response_json, f, indent=4)
+            
+        # 이미지 생성 데이터베이스 기록
+        imezy_update_db = models.ImezyUpdateDB()
+        imezy_update_db.email = auth['email']
+        imezy_update_db.imezy_type = IMEZY_CONFIG["imezy_type"]['i2i']
+        imezy_update_db.num_imgs = created_images_num
+        imezy_update_db.updated = now
+        db.add(imezy_update_db)
 
         # update credits
         updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image

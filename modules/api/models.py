@@ -313,8 +313,9 @@ class UpdateCreditsResponse(BaseModel):
     credits_inc: int = Field(title="Credits Inc")
     currunt_credits: int = Field(title="Current Credits")
     
-class DeleteImageRequest(BaseModel):
-    image_id: int = Field(title="Image ID")
+class DownloadImageRequest(BaseModel):
+    index: int = Field(title="Image Index")    
+
     
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
@@ -345,7 +346,6 @@ class CreditsDB(Base):
     credits = Column(Integer, default=200)
     last_updated = Column(DateTime, default=datetime.utcnow)
     email = Column(String, ForeignKey("users.email"))
-    
     
 class UsersAdminDB(Base):
     __tablename__ = "users_admin"

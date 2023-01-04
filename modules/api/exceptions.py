@@ -1,10 +1,12 @@
 from fastapi import HTTPException, status
+from .logs import print_message
 
 def get_user_not_found_exception():
     bad_request_exception = HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="User not found"
     )
+    print_message("get_user_not_found_exception", bad_request_exception)
     return bad_request_exception
 
 def get_incorrent_password_exception():
@@ -12,6 +14,7 @@ def get_incorrent_password_exception():
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Incorrect password"
     )
+    print_message("get_incorrent_password_exception", bad_request_exception)
     return bad_request_exception
 
 def get_not_active_user_exception():
@@ -19,6 +22,7 @@ def get_not_active_user_exception():
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Not active user"
     )
+    print_message("get_not_active_user_exception", bad_request_exception)
     return bad_request_exception
 
 def get_user_exception():
@@ -27,6 +31,7 @@ def get_user_exception():
         detail="Could not validate credentials. user exception",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("get_user_exception", credentials_exception)
     return credentials_exception
 
 def get_update_credit_failed_exception():
@@ -35,6 +40,7 @@ def get_update_credit_failed_exception():
         detail="Could not validate credentials. update credit failed",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("get_update_credit_failed_exception", credentials_exception)
     return credentials_exception
 
 
@@ -44,6 +50,7 @@ def get_admin_exception():
         detail="Could not validate credentials. not a admin user",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("get_admin_exception", credentials_exception)
     return credentials_exception
 
 def get_jwt_exception():
@@ -52,6 +59,7 @@ def get_jwt_exception():
         detail="Could not validate credentials. The access token is expired or invalid",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("get_jwt_exception", credentials_exception)
     return credentials_exception
 
 def access_token_expired_exception():
@@ -60,6 +68,7 @@ def access_token_expired_exception():
         detail="The access token is expired",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("access_token_expired_exception", expired_exception)
     return expired_exception
 
 def refresh_token_expired_exception():
@@ -68,6 +77,7 @@ def refresh_token_expired_exception():
         detail="The refresh token is expired or invalid, please login again",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("refresh_token_expired_exception", expired_exception)
     return expired_exception
     
 def token_exception():
@@ -76,6 +86,7 @@ def token_exception():
         detail="Could not validate credentials. token exception",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("token_exception", token_exception_response)
     return token_exception_response
 
 def refresh_token_exception():
@@ -84,6 +95,7 @@ def refresh_token_exception():
         detail="The refresh token is expired or invalid, please login again",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("refresh_token_exception", refresh_token_exception_response)
     return refresh_token_exception_response
 
 
@@ -93,4 +105,23 @@ def not_enough_credits_exception():
         detail="Could not validate credentials. not enough credits",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    print_message("not_enough_credits_exception", credentials_exception)
     return credentials_exception
+
+# 부적절한 사용자 접근 예외
+def get_inappropriate_user_exception():
+    bad_request_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Inappropriate user access exception"
+    )
+    print_message("get_inappropriate_user_exception", bad_request_exception)
+    return bad_request_exception
+
+# File not exist exception
+def get_file_not_exist_exception():
+    bad_request_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="File not exist exception"
+    )
+    print_message("get_file_not_exist_exception", bad_request_exception)
+    return bad_request_exception
