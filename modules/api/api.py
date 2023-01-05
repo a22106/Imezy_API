@@ -508,6 +508,8 @@ class Api:
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
+        print_message(f"Creating a new user. email: {create_user.email}, username: {create_user.username}")
+        
         is_exist = []
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.username == create_user.username).first())
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
@@ -566,18 +568,20 @@ class Api:
 
         return {"message": f"User {create_user.username} created successfully"}
     
-    def update_credits(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        if not auth:
-            raise exceptions.get_user_exception()
-        user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
-        if user is None:
-            raise exceptions.get_user_exception()
-        user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
-        if user_credits is None:
-            raise exceptions.get_user_exception()
-        user_credits.credits = user_credits.credits + user_credits.credits_inc
-        db.commit()
-        return {"message": f"Credits updated for user {user.username}"}
+    # def update_credits(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    #     if not auth:
+    #         raise exceptions.get_user_exception()
+    #     print_message(f"Updating credits for user {auth['email']}")
+        
+    #     user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
+    #     if user is None:
+    #         raise exceptions.get_user_exception()
+    #     user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
+    #     if user_credits is None:
+    #         raise exceptions.get_user_exception()
+    #     user_credits.credits = user_credits.credits + user_credits.credits_inc
+    #     db.commit()
+    #     return {"message": f"Credits updated for user {user.username}"}
     
     def make_admin(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
@@ -630,7 +634,7 @@ class Api:
 
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
-        
+        print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         # check auth email and if the user has enough credits
         
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
@@ -723,7 +727,7 @@ class Api:
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
                         auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
-        
+        print_message(f"User {auth['email']} is generating an image using img2imgapi_auth")
         
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
         if user_db is None:
@@ -1057,15 +1061,16 @@ class Api:
         return credits.read_creds(db, user_email)
     
     
-    def update_cred(self, request: UpdateCreditsRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        if user['type'] == 'refresh':
-            return self.reissue_access_token(db=db, auth=user)
+    def update_cred(self, request: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        if auth['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=auth)
+        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {request.credits_inc}, target user email: {request.email}")
         
         request = request.dict()
-        user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == user.get("email", None)).first()
+        user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == auth.get("email", None)).first()
         
         # if the user is not admin, he can only update his own credits
-        if user_admin_db != None or request['email'] == user['email']:
+        if user_admin_db != None or request['email'] == auth['email']:
             print_message("User is admin or updating his own credits")
             current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
             return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)

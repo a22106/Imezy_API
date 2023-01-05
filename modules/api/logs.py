@@ -30,7 +30,7 @@ def print_message(*args):
                 print(str(now) + ': ' + str(arg))
 
 def current_time():
-    now = datetime.now().utcnow().strftime('%y-%m-%d %H:%M:%S')
+    now = datetime.now().strftime('%y-%m-%d %H:%M:%S')
     return now
 
 print_message('Server start time: ', SERVER_START)
