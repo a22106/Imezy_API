@@ -99,6 +99,12 @@ def encode_pil_to_base64(image):
         )
         bytes_data = output_bytes.getvalue()
     return base64.b64encode(bytes_data)
+
+def convert_img_to_webp(image):
+    with io.BytesIO() as output_bytes:
+        image.save(output_bytes, "WEBP")
+        bytes_data = output_bytes.getvalue()
+    return base64.b64encode(bytes_data)
     
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
@@ -163,6 +169,7 @@ class Api:
         self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
         
         self.add_api_route("/image/search", self.search_image, methods=["GET"])
+        self.add_api_route("/image/search_compressed", self.search_image_compressed, methods=["GET"])
         self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
         self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
         
@@ -183,7 +190,7 @@ class Api:
         
         imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
         if imezy_update_db is None:
-            return {"image": None}
+            return HTTPException(status_code=404, detail="No images found in the database.")
         
         response = []
         for i, row in enumerate(imezy_update_db):
@@ -199,7 +206,33 @@ class Api:
                 print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
                 return exceptions.get_file_not_exist_exception()
                  
-                
+        return response
+    
+    def search_image_compressed(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
+        print_message("search_image", auth)
+        
+        imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
+        if imezy_update_db is None:
+            return HTTPException(status_code=404, detail="No images found in the database.")
+        
+        response = []
+        for i, row in enumerate(imezy_update_db):
+            updated = datetime.strptime(str(row.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
+            
+            try:
+                # 이미지 저장된 json 파일 읽기
+                with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
+                    data = json.load(f)
+                if data["images_compressed"]:
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images_compressed": data["images_compressed"] })
+            except FileNotFoundError:
+                print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
+                continue
+            except KeyError:
+                print(f"generated/{auth['email']}/{updated}.json 파일에 images_compressed가 없습니다.")
+                continue
+                 
         return response
     
     def delete_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -568,8 +601,9 @@ class Api:
 
 
         b64images = list(map(encode_pil_to_base64, processed.images))
+        b64images_compressed = list(map(convert_img_to_webp, processed.images))
 
-        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
+        return TextToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(auth)
@@ -588,6 +622,10 @@ class Api:
         
         response = self.text2imgapi(txt2imgreq)
         response_json = json.loads(response.json())
+        
+        # 이미지 압축 저장 to webp
+        response_images = response_json["images"]
+        
         
         # 이미지 생성 저장(json)
         now = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -647,12 +685,13 @@ class Api:
             shared.state.end()
 
         b64images = list(map(encode_pil_to_base64, processed.images))
+        b64images_compressed = list(map(convert_img_to_webp, processed.images))
 
         if not img2imgreq.include_init_images:
             img2imgreq.init_images = None
             img2imgreq.mask = None
 
-        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=json.loads(processed.js()))
+        return ImageToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(img2imgreq), info=json.loads(processed.js()))
 
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
                         auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -692,9 +731,8 @@ class Api:
         if credits.update_cred(user_db.email, updateing_creedit_inc, db) == False:
             raise exceptions.get_user_exception()
         
-        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}")
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
             
-
         return response
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
