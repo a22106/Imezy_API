@@ -680,7 +680,7 @@ class Api:
         
         response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
-                                             credits=user_db.credits + updateing_creedit_inc)
+                                             credits=user_db.credits)
                                            
         return response
 
@@ -766,7 +766,7 @@ class Api:
         
         response = ImageToImageAuthResponse(images=response_json["images"], images_compressed=response_json["images_compressed"], 
                                             parameters=response_json["parameters"], info=response_json["info"], 
-                                            credits=user_db.credits + updateing_creedit_inc)
+                                            credits=user_db.credits)
         
         return response
 
