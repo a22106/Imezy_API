@@ -189,7 +189,7 @@ class Api:
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
-        self.add_api_route("/credits/update", self.update_cred, methods=["PUT"])
+        self.add_api_route("/credits/update", self.update_cred, methods=["PUT"], response_model=UpdateCreditsResponse)
         
         self.add_api_route("/image/search", self.search_image, methods=["GET"])
         self.add_api_route("/image/search_compressed", self.search_image_compressed, methods=["GET"])
@@ -674,7 +674,10 @@ class Api:
         
         print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
         
-        response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], parameters=vars(txt2imgreq), info=json.loads(response.js()), credits=user_db.credits)
+        response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
+                                             parameters=response_json["parameters"], info=response_json["info"], 
+                                             credits=user_db.credits + updateing_creedit_inc)
+                                           
         return response
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
@@ -756,7 +759,11 @@ class Api:
             raise exceptions.get_user_exception()
         
         print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
-            
+        
+        response = ImageToImageAuthResponse(images=response_json["images"], images_compressed=response_json["images_compressed"], 
+                                            parameters=response_json["parameters"], info=response_json["info"], 
+                                            credits=user_db.credits + updateing_creedit_inc)
+        
         return response
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
