@@ -1,17 +1,12 @@
-# duplicate generated image files between two pius and test directories
+# duplicate files in the two directories
 from pathlib import Path
-import os
 from shutil import copyfile
 import argparse
 
 parser = argparse.ArgumentParser()
-# --dir1 or -d1
-parser.add_argument('--dir1', '-d1', help='directory 1', default='/data/StableDiffusion/stable-diffusion-webui-test/generated')
-parser.add_argument('--dir2', '-d2', help='directory 2', default='/data/StableDiffusion/stable-diffusion-webui-pius/generated')
+parser.add_argument('--dir1', '-d1', help='directory 1', default='/data/StableDiffusion/stable-diffusion-webui-test/generated', required=True, type=str)
+parser.add_argument('--dir2', '-d2', help='directory 2', default='/data/StableDiffusion/stable-diffusion-webui-pius/generated', required=True, type=str)
 args = parser.parse_args()
-
-# DIR_LOG1 = Path('/data/StableDiffusion/stable-diffusion-webui-test/logs')
-# DIR_LOG2 = Path('/data/StableDiffusion/stable-diffusion-webui-pius/logs')
 
 # make whole files in the directories to be equal. even if the files are not in the same directory and in the subdirectory
 # copy files from dir1 to dir2 and vice versa
