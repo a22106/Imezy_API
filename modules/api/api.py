@@ -225,7 +225,7 @@ class Api:
                 with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
                     data = json.load(f)
                 if data["images_compressed"]:
-                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images_compressed": data["images_compressed"] })
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images_compressed"] })
             except FileNotFoundError:
                 print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
                 continue
