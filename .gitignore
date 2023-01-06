@@ -40,3 +40,4 @@ notification.mp3
 .nfs*
 .gitignore
 modules/api/updateDB.sql
+test_smtp.ipynb
