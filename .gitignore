@@ -41,3 +41,4 @@ notification.mp3
 .gitignore
 modules/api/updateDB.sql
 test_smtp.ipynb
+*.ipynb
