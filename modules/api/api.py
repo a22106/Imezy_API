@@ -50,6 +50,7 @@ from . import models, credits
 from .users import *
 from .auth import *
 from .logs import print_message
+from . import utils as api_utils
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -186,6 +187,8 @@ class Api:
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
+        self.add_api_route("/user/email/verify/send", self.verify_email_send_code, methods=["POST"])
+        self.add_api_route("/user/email/verify/check", self.verify_email_check_code, methods=["POST"])
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
@@ -308,6 +311,49 @@ class Api:
         if data["images"]:
             return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
         
+    def verify_email_send_code(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        not_authenticated_access_token(auth)
+        print_message(f"Verify email: {auth['email']} create code")
+        
+        from random import randint
+        code = randint(100000, 999999)
+
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
+            verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
+        
+            db.add(verify_email_db)
+            db.commit()
+        else:
+            verify_email_db.code = code
+            db.commit()        
+        
+        # subject = "Imezy 이메일 인증 코드"
+        subject = "Imezy Email Verification Code"
+        content = f"Your verification code is {code}\n Copy and paste the code into the verification code field."
+        
+        api_utils.send_email(auth["email"], subject, content)
+        
+        return {"detail": f"Sended 6-digits code to {auth['email']}"}
+    
+    def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
+        print_message(f"Check code: {req.email}")
+        
+        # db 불러오기
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email} is not exist")
+        
+        print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
+        
+        if int(verify_email_db.code) != int(req.code):
+            print_message(f"Code is not correct")
+            return HTTPException(status_code=404, detail=f"Code is not correct")
+        
+        verify_email_db.code = True
+        db.commit()
+        
+        return {"detail": f"Code is correct"}
+        
+        
     
     def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         not_authenticated_access_token(user)
@@ -408,6 +454,7 @@ class Api:
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
         user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
+        user_info['verified'] = db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first().__dict__["verified"]
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
@@ -528,6 +575,7 @@ class Api:
         create_user_model.is_admin = create_user.is_admin
         print_message(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
+        
         try:
             db.commit()
             print_message(f'User {create_user_model.email} created successfully')

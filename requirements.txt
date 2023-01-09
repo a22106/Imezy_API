@@ -31,3 +31,5 @@ GitPython
 torchsde
 safetensors
 psutil; sys_platform == 'darwin'
+email-validator
+py3DNS

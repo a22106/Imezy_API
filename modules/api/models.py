@@ -331,8 +331,11 @@ class UpdateCreditsResponse(BaseModel):
     
 class DownloadImageRequest(BaseModel):
     index: int = Field(title="Image Index")    
-
     
+class VerifyEmailRequest(BaseModel):
+    email: str = Field(title="Email")
+    code: str = Field(title="Code")
+
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
     SECRET_KEY_REFRESH = "secret_refresh"
@@ -352,7 +355,7 @@ class UsersDB(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
-    created_date = Column(DateTime, default=datetime.utcnow)
+    created_date = Column(DateTime, default=datetime.now)
 
 class CreditsDB(Base):
     __tablename__ = "credits"
@@ -360,7 +363,7 @@ class CreditsDB(Base):
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=datetime.now)
     email = Column(String, ForeignKey("users.email"))
     
 class UsersAdminDB(Base):
@@ -383,7 +386,7 @@ class CreditsUpdateDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
     credits_inc = Column(Integer, default=0)
-    updated = Column(DateTime, default=datetime.utcnow)
+    updated = Column(DateTime, default=datetime.now)
     
 class ImezyUpdateDB(Base):
     __tablename__ = "imezy_update"
@@ -391,6 +394,14 @@ class ImezyUpdateDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
     imezy_type = Column(Integer, nullable=False)
-    updated = Column(DateTime, default=datetime.utcnow)
+    updated = Column(DateTime, default=datetime.now)
     num_imgs = Column(Integer, nullable=False)
     
+class VerifyEmailDB(Base):
+    __tablename__ = "verify_email"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    code = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+    verified = Column(Boolean, default=False)

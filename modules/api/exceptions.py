@@ -125,3 +125,12 @@ def get_file_not_exist_exception():
     )
     print_message("get_file_not_exist_exception", bad_request_exception)
     return bad_request_exception
+
+def invalid_email_exception(error):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"{error}",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    print_message("InvalidEmailError", credentials_exception)
+    return credentials_exception
