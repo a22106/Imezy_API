@@ -354,7 +354,7 @@ class Api:
             print_message(f"Code is not correct")
             return HTTPException(status_code=404, detail=f"Code is not correct")
         
-        verify_email_db.code = True
+        verify_email_db.verified = True
         db.commit()
         
         return {"detail": f"Code is correct"}
