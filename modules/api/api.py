@@ -65,6 +65,12 @@ def upscaler_to_index(name: str):
     except:
         raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be on of these: {' , '.join([x.name for x in sd_upscalers])}")
 
+def script_name_to_index(name, scripts):
+    try:
+        return [script.title().lower() for script in scripts].index(name.lower())
+    except:
+        raise HTTPException(status_code=422, detail=f"Script '{name}' not found")
+
 def validate_sampler_name(name):
     config = sd_samplers.all_samplers_map.get(name, None)
     if config is None:
@@ -348,7 +354,7 @@ class Api:
             print_message(f"Code is not correct")
             return HTTPException(status_code=404, detail=f"Code is not correct")
         
-        verify_email_db.code = True
+        verify_email_db.verified = True
         db.commit()
         
         return {"detail": f"Code is correct"}

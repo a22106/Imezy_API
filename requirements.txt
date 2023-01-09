@@ -30,6 +30,6 @@ inflection
 GitPython
 torchsde
 safetensors
-psutil; sys_platform == 'darwin'
+psutil
 email-validator
 py3DNS
