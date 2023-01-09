@@ -65,15 +65,12 @@ def upscaler_to_index(name: str):
     except:
         raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be one of these: {' , '.join([x.name for x in sd_upscalers])}")
 
-<<<<<<< HEAD
-=======
 def script_name_to_index(name, scripts):
     try:
         return [script.title().lower() for script in scripts].index(name.lower())
     except:
         raise HTTPException(status_code=422, detail=f"Script '{name}' not found")
 
->>>>>>> 8850fc23b6e8a8e210bdfe4aade81516fb5770f3
 def validate_sampler_name(name):
     config = sd_samplers.all_samplers_map.get(name, None)
     if config is None:
