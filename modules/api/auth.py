@@ -14,6 +14,7 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt, ExpiredSignatureError
 
 from . import exceptions
+from .logs import print_message
 from .database import get_db
 from sqlalchemy.orm import Session
 
@@ -84,16 +85,10 @@ def refresh_token_auth(token: str = Depends(oauth2_bearer)):
         
         raise exceptions.refresh_token_expired_exception()
     
-def create_access_token(email: str, user_id: int, 
+def create_access_token(email: str, user_id: int, verified: bool = False,
                     expires_delta: Optional[timedelta] = ACCESS_TOKEN_EXPIRES_MINUTES):
-    to_encode = {"email": email, "user_id": user_id}
-    
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(hours=1)
-    
-        
+    to_encode = {"email": email, "user_id": user_id, "verified": verified}
+    expire = datetime.utcnow() + expires_delta
         
     # update subject expire time and if it's access token
     to_encode.update({"exp": expire, "type": "access"})
@@ -101,7 +96,7 @@ def create_access_token(email: str, user_id: int,
     return encoded_jwt
 
 # refresh token expires in 1 months
-def create_refresh_token(email: str, user_id: int, 
+def create_refresh_token(email: str, user_id: int,
                     expires_delta: Optional[timedelta] = REFRESH_TOKEN_EXPIRES_MINUTES):
     to_encode = {"email": email, "user_id": user_id}
     expire = datetime.utcnow() + expires_delta
@@ -111,7 +106,7 @@ def create_refresh_token(email: str, user_id: int,
     
     return encoded_jwt
 
-def authenticated_access_token_check(auth: dict, db: Session = None):
+def authenticated_access_token_check(auth: dict, db: Session = None, verify: bool = False):
     '''
     description:
         - check if user is authenticated or not
@@ -123,10 +118,20 @@ def authenticated_access_token_check(auth: dict, db: Session = None):
         - bool = True if user is authenticated, False if user is not authenticated
     '''
     
+    # 유저가 데이터베이스에 있는지 확인
     if db:
         if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth['email']).first()) is None:
             print("User is not in database")
             raise exceptions.get_user_exception()
+    
+    # 이메일 인증된 회원인지 확인
+    if verify:
+        if db is None:
+            db = next(get_db()) # mysql 불러오기
+            
+        is_verified = db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth['email']).first()
+        if is_verified is None or is_verified.verified is False:
+            raise exceptions.not_verified_email_exception(auth['email'])
     
     if auth is None:
         print("User is not authenticated")

@@ -127,10 +127,19 @@ def get_file_not_exist_exception():
     return bad_request_exception
 
 def invalid_email_exception(error):
-    credentials_exception = HTTPException(
+    inval_email_exception = HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"{error}",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    print_message("InvalidEmailError", credentials_exception)
-    return credentials_exception
+    print_message("InvalidEmailError", inval_email_exception)
+    return inval_email_exception
+
+def not_verified_email_exception(email: str):
+    exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail= f"{email+' '}Email not verified",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    print_message(f"{email+' '}Email not verified")
+    return exception

@@ -2,9 +2,11 @@
 
 - [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
 - [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
-- [ ] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
-- [ ] 4. 생성된 사진 용량 줄여서 저장하기
-- [ ] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
+- [v] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
+- [v] 4. 생성된 사진 용량 줄여서 저장하기
+- [v] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
+- [v] 6. 이메일 인증 기능 추가하기
+- [ ] 7. jwt에 이메일 인증 여부 내용 추가하기
 
 '''
 
@@ -146,13 +148,13 @@ class Api:
         self.router = APIRouter()
         self.app = app
         self.queue_lock = queue_lock
-        api_middleware(self.app)
+        api_middleware(self.app) # 이메일 인증이 필요한 기능은 ## 표시
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
-        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageAuthResponse)
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
-        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageAuthResponse)
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
-        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse)
+        self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse) ##
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
         self.add_api_route("/sdapi/v1/png-info", self.pnginfoapi, methods=["POST"], response_model=PNGInfoResponse)
         self.add_api_route("/sdapi/v1/progress", self.progressapi, methods=["GET"], response_model=ProgressResponse)
@@ -182,19 +184,19 @@ class Api:
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login, methods=["POST"])
         # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
-        self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"])
-        self.add_api_route("/user/logout", self.logout, methods=["POST"])
+        self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"]) # reissue access token
+        self.add_api_route("/user/logout", self.logout, methods=["POST"]) # logout
         self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
-        self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
+        self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"]) # read all users
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"], response_model=UpdatePasswordResponse)
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
-        self.add_api_route("/user/email/verify/send", self.verify_email_send_code, methods=["POST"])
-        self.add_api_route("/user/email/verify/check", self.verify_email_check_code, methods=["POST"])
+        self.add_api_route("/user/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
+        self.add_api_route("/user/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
@@ -361,27 +363,30 @@ class Api:
         
         
     
-    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        authenticated_access_token_check(user)
+    def update_email(self, req: UpdateEmailRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
         print_message(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
         elif db.query(models.UsersDB).filter(models.UsersDB.email == req.email).first():
             raise HTTPException(status_code=400, detail="Email already exists")
         
-        current_email = user['email']
+        current_email = auth['email']
         user_db = db.query(models.UsersDB).filter(models.UsersDB.email == current_email).first()
         if user_db is None:
             print_message(f"The token is invalid({current_email}). Please login again.")
             raise HTTPException(status_code=401, detail=f"The token is invalid({current_email}). Please login again.")
         user_db.email = req.email
         db.commit()
-
+        
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == current_email).first()) is None:
+            verified = False
+        else:
+            verified = verify_email_db.verified
+            
         try:
-            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
-            refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRES_MINUTES)
-            access_token = create_access_token(email=user_db.email, user_id=user["user_id"], expires_delta=access_token_expires)
-            refresh_token = create_refresh_token(email=user_db.email, user_id=user["user_id"], expires_delta=refresh_token_expires)
+            access_token = create_access_token(email=user_db.email, user_id=auth["user_id"], verified=verified)
+            refresh_token = create_refresh_token(email=user_db.email, user_id=auth["user_id"])
             response = {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
             response.update({"message": "Email updated to '{}' successfully".format(req.email)})
         except:
@@ -390,14 +395,14 @@ class Api:
 
         return response
     
-    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        authenticated_access_token_check(user)
+    def update_username(self, req: UpdateUsernameRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
         if db.query(models.UsersDB).filter(models.UsersDB.username == req.username).first():
             raise HTTPException(status_code=400, detail="Username already exists")
         elif len(req.username) < 3:
             raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user["user_id"]).first()
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == auth["user_id"]).first()
         if not user_info:
             raise exceptions.get_user_not_found_exception()
         
@@ -410,19 +415,19 @@ class Api:
             db.rollback()
             raise HTTPException(status_code=500, detail="Could not update username")
     
-    def delete_user_by_id(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def delete_user_by_id(self, user_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         
-        authenticated_access_token_check(user)
-        if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
+        authenticated_access_token_check(auth)
+        if db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().is_admin == False:
             print_message("User is not admin")
             raise exceptions.get_admin_exception()
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
-        username = user_info.username
-        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info.email).first()
-        if user_info is not None:
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
+        username = user_db.username
+        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_db.email).first()
+        if user_db is not None:
             db.delete(credits_info)
-            db.delete(user_info)
+            db.delete(user_db)
             db.commit()
             print_message(f"User {user_id}:{username} deleted")
             return {"message": f"User {user_id}:{username} deleted"}
@@ -479,18 +484,24 @@ class Api:
     
     def login(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
-        user = self.authenticate_user(form_data.email, form_data.password, db)
-        if not user:
+        if (user_db := self.authenticate_user(form_data.email, form_data.password, db)) is False:
             raise exceptions.token_exception()
-        access_token = create_access_token(email=user.email, user_id=user.id)
-        refresh_token = create_refresh_token(email=user.email, user_id=user.id)
         
-        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user.email).first()
+        
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_db.email).first()) is None:
+            verified = False
+        else:
+            verified = verify_email_db.verified
+        
+        access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
+        refresh_token = create_refresh_token(email=user_db.email, user_id=user_db.id)
+        
+        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
         # check if user has a refresh token is outdated
         if not former_rtoken:
             new_rtoken = models.RefreshTokenDB()
             new_rtoken.token = refresh_token
-            new_rtoken.email = user.email
+            new_rtoken.email = user_db.email
             
             db.add(new_rtoken)
             db.commit()
@@ -507,15 +518,19 @@ class Api:
     def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refresh_token_auth)):
         authenticated_access_token_check(auth)
         
-        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
-        if not user_db:
+        if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()) is None:
             raise exceptions.token_exception()
         
         rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
         if not rtoken:
             raise exceptions.token_exception()
         
-        access_token = create_access_token(email=user_db.email, user_id=user_db.id)
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
+            verified = False
+        else:
+            verified = verify_email_db.verified
+        
+        access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
         return {
             "access_token": access_token, 
             "token_type": "bearer"}
@@ -524,29 +539,31 @@ class Api:
     def logout(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         
-        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == auth["email"]).first()
-        if not rtoken:
+        if (rtoken := db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == auth["email"]).first()) is None:
             raise exceptions.token_exception()
         
         db.delete(rtoken)
         db.commit()
         return {"message": f"user {auth['email']} logged out"}
     
-    def login_new(self, user: UserResponse, authorize: AuthJWT = Depends(), db: Session = Depends(get_db)):
-        self.authenticate_user(user.email, user.password, db)
-        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
-        if user_db is None:
+    def login_new(self, user: UserResponse, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()) is None:
             raise exceptions.get_user_not_found_exception()
         elif not verify_password(user.password, user_db.hashed_password):
             raise exceptions.get_incorrent_password_exception
         elif not user_db.is_active:
             raise exceptions.get_not_active_user_exception()
-            
-        access_token = authorize.create_access_token(subject=user.email)
-        refresh_token = authorize.create_refresh_token(subject=user.email)
-        return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
-    
         
+        
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth['email']).first()) is None:
+            verified = False
+        else:
+            verified = verify_email_db.verified
+            
+        access_token = auth.create_access_token(subject=user.email, user_id=user_db.id, verified=verified)
+        refresh_token = auth.create_refresh_token(subject=user.email, user_id=user_db.id)
+        return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
     def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
         if not auth:
@@ -689,7 +706,7 @@ class Api:
         return TextToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        authenticated_access_token_check(auth)
+        authenticated_access_token_check(auth, db=db, verify=True)
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         # check auth email and if the user has enough credits
         
@@ -782,7 +799,7 @@ class Api:
 
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
                         auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        authenticated_access_token_check(auth)
+        authenticated_access_token_check(auth, db=db, verify=True)
         print_message(f"User {auth['email']} is generating an image using img2imgapi_auth")
         
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
@@ -838,7 +855,7 @@ class Api:
     
     def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, 
                                      auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
-        authenticated_access_token_check(auth)
+        authenticated_access_token_check(auth, db=db, verify=True)
         
         response = self.extras_single_image_api(req)
         
