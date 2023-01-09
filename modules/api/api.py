@@ -27,10 +27,10 @@ from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import AuthJWTException
 
 import modules.shared as shared
-from modules import sd_samplers, deepbooru, sd_hijack
+from modules import sd_samplers, deepbooru, sd_hijack, images, scripts, ui
 from modules.api.models import *
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img, process_images
-from modules.extras import run_extras, run_pnginfo
+from modules.extras import run_extras
 from modules.textual_inversion.textual_inversion import create_embedding, train_embedding
 from modules.textual_inversion.preprocess import preprocess
 from modules.hypernetworks.hypernetwork import create_hypernetwork, train_hypernetwork
@@ -63,8 +63,17 @@ def upscaler_to_index(name: str):
     try:
         return [x.name.lower() for x in shared.sd_upscalers].index(name.lower())
     except:
-        raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be on of these: {' , '.join([x.name for x in sd_upscalers])}")
+        raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be one of these: {' , '.join([x.name for x in sd_upscalers])}")
 
+<<<<<<< HEAD
+=======
+def script_name_to_index(name, scripts):
+    try:
+        return [script.title().lower() for script in scripts].index(name.lower())
+    except:
+        raise HTTPException(status_code=422, detail=f"Script '{name}' not found")
+
+>>>>>>> 8850fc23b6e8a8e210bdfe4aade81516fb5770f3
 def validate_sampler_name(name):
     config = sd_samplers.all_samplers_map.get(name, None)
     if config is None:
@@ -657,7 +666,21 @@ class Api:
 
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
 
+    def get_script(self, script_name, script_runner):
+        if script_name is None:
+            return None, None
+
+        if not script_runner.scripts:
+            script_runner.initialize_scripts(False)
+            ui.create_ui()
+
+        script_idx = script_name_to_index(script_name, script_runner.selectable_scripts)
+        script = script_runner.selectable_scripts[script_idx]
+        return script, script_idx
+
     def text2imgapi(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI):
+        script, script_idx = self.get_script(txt2imgreq.script_name, scripts.scripts_txt2img)
+
         populate = txt2imgreq.copy(update={ # Override __init__ params
             "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
             "do_not_save_samples": True,
@@ -667,13 +690,21 @@ class Api:
         if populate.sampler_name:
             populate.sampler_index = None  # prevent a warning later on
 
+        args = vars(populate)
+        args.pop('script_name', None)
+
         with self.queue_lock:
-            p = StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **vars(populate))
+            p = StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **args)
 
             shared.state.begin()
-            processed = process_images(p)
+            if script is not None:
+                p.outpath_grids = opts.outdir_txt2img_grids
+                p.outpath_samples = opts.outdir_txt2img_samples
+                p.script_args = [script_idx + 1] + [None] * (script.args_from - 1) + p.script_args
+                processed = scripts.scripts_txt2img.run(p, *p.script_args)
+            else:
+                processed = process_images(p)
             shared.state.end()
-
 
         b64images = list(map(encode_pil_to_base64, processed.images))
         b64images_compressed = list(map(convert_img_to_webp, processed.images))
@@ -737,6 +768,8 @@ class Api:
         if init_images is None:
             raise HTTPException(status_code=404, detail="Init image not found")
 
+        script, script_idx = self.get_script(img2imgreq.script_name, scripts.scripts_img2img)
+
         mask = img2imgreq.mask
         if mask:
             print_message(mask[:100])
@@ -754,13 +787,20 @@ class Api:
 
         args = vars(populate)
         args.pop('include_init_images', None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
+        args.pop('script_name', None)
 
         with self.queue_lock:
             p = StableDiffusionProcessingImg2Img(sd_model=shared.sd_model, **args)
             p.init_images = [decode_base64_to_image(x) for x in init_images]
 
             shared.state.begin()
-            processed = process_images(p)
+            if script is not None:
+                p.outpath_grids = opts.outdir_img2img_grids
+                p.outpath_samples = opts.outdir_img2img_samples
+                p.script_args = [script_idx + 1] + [None] * (script.args_from - 1) + p.script_args
+                processed = scripts.scripts_img2img.run(p, *p.script_args)
+            else:
+                processed = process_images(p)
             shared.state.end()
 
         b64images = list(map(encode_pil_to_base64, processed.images))
@@ -856,9 +896,17 @@ class Api:
         if(not req.image.strip()):
             return PNGInfoResponse(info="")
 
-        result = run_pnginfo(decode_base64_to_image(req.image.strip()))
+        image = decode_base64_to_image(req.image.strip())
+        if image is None:
+            return PNGInfoResponse(info="")
 
-        return PNGInfoResponse(info=result[1])
+        geninfo, items = images.read_info_from_image(image)
+        if geninfo is None:
+            geninfo = ""
+
+        items = {**{'parameters': geninfo}, **items}
+
+        return PNGInfoResponse(info=geninfo, items=items)
 
     def progressapi(self, req: ProgressRequest = Depends()):
         # copy from check_progress_call of ui.py
