@@ -39,9 +39,7 @@ notification.mp3
 /logs
 
 .nfs*
-.gitignore
 modules/api/updateDB.sql
+logs/*
 test_smtp.ipynb
-
-.env
 generated/*

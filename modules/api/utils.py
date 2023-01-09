@@ -1,11 +1,15 @@
-import smtplib
-from email_validator import validate_email, EmailNotValidError
-from .exceptions import invalid_email_exception
-from .logs import print_message
-from email.mime.text import MIMEText
+import smtplib, ssl
 import json
 
-with open('modules/api/configs.json', 'r') as f:
+from email_validator import validate_email, EmailNotValidError
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from .exceptions import invalid_email_exception
+from .logs import print_message
+
+
+with open('/data/StableDiffusion/stable-diffusion-webui-test/modules/api/configs.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
 
 def validate_email_address(email):
@@ -48,21 +52,45 @@ def email_setting(email:str, password:str, type:str = None, port:int = 587, debu
     smtp.ehlo() # say Hello
     if mail_type != "smtp.mailplug.co.kr":
         smtp.starttls()
-    print_message(f"SMTP email login: {email}")
-    smtp.login(email, password)
     
     return smtp
 
-def send_email(receiver, subject, content):
-    msg = MIMEText(content)
+def send_email(receiver, subject, content, *attachments):
+    print(f"Send email to {receiver}")
+    
+    if not validate_email_address(receiver):
+        return invalid_email_exception()
+    
+    mail_domain = IMEZY_CONFIG["email"].split('@')[1].split('.')[0]
+    mail_port = 587
+    if mail_domain == 'gmail':
+        mail_server = "smtp.gmail.com"
+        mail_port = 465
+    elif mail_domain == 'naver':
+        mail_server = "smtp.naver.com"
+    elif mail_domain == 'mailplug':
+        mail_server = "smtp.mailplug.co.kr"
+        
+    
+    is_html = False
+    # check if content is html
+    if "</html>" in content:
+        is_html = True
+    
+    
+    msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From'] = IMEZY_CONFIG["email"]
     msg['To'] = receiver
-    
+    msg.attach(MIMEText(content, 'html')) if is_html else msg.attach(MIMEText(content, 'plain'))
+    msg_string = msg.as_string()
+    for att in attachments:
+        msg.add_header('Content-Disposition', 'attachment', filename=att)
     print_message(f"Send email to {receiver}")
     
-    smtp = email_setting(IMEZY_CONFIG["email"], IMEZY_CONFIG["email_password"])
-    smtp.sendmail(IMEZY_CONFIG["email"], receiver, msg.as_string())
-    smtp.quit()
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(mail_server, mail_port, context=context) as server:
+        server.login(IMEZY_CONFIG["email"], IMEZY_CONFIG["email_password"])
+        server.sendmail(IMEZY_CONFIG["email"], receiver, msg_string)
     
-    return True
+    return {"status": "success", "detail": "Email sent successfully"}

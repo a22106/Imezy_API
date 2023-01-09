@@ -284,9 +284,9 @@ class EmbeddingsResponse(BaseModel):
     skipped: Dict[str, EmbeddingItem] = Field(title="Skipped", description="Embeddings skipped for the current model (likely due to architecture incompatibility)")
 
 class CreateUserResponse(BaseModel):
-    username: str = Field("piushwang", title="Username")
-    email: Optional[str] = Field("bk22106@gmail.com", title="Email")
-    password: str = Field("1234", title="Password")
+    username: str = Field(title="Username")
+    email: Optional[str] = Field(title="Email")
+    password: str = Field(title="Password")
     is_active: bool = Field(True, title="Is Active")
     is_admin: bool = Field(False, title="Is Admin")
 

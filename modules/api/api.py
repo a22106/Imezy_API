@@ -345,6 +345,7 @@ class Api:
     
     def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Check code: {req.email}")
+        expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
         
         # db 불러오기
         if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
@@ -352,7 +353,12 @@ class Api:
         
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
-        if int(verify_email_db.code) != int(req.code):
+        # 만료 여부 확인
+        if verify_email_db.updated + timedelta(seconds=expire_seconds) < datetime.now():
+            print_message(f"Code is expired")
+            return HTTPException(status_code=400, detail=f"Code is expired")
+        # 코드 일치 여부 확인
+        elif int(verify_email_db.code) != int(req.code):
             print_message(f"Code is not correct")
             return HTTPException(status_code=404, detail=f"Code is not correct")
         
@@ -365,6 +371,7 @@ class Api:
     
     def update_email(self, req: UpdateEmailRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
+        print_message(f"Update email user: {auth['email']}")
         print_message(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
@@ -473,17 +480,19 @@ class Api:
         return user_info
 
     def authenticate_user(self, email, password, db):
-        user = db.query(models.UsersDB)\
+        user_db = db.query(models.UsersDB)\
             .filter(models.UsersDB.email == email).first()
         
-        if not user:
+        if not user_db:
             return False
-        if not verify_password(password, user.hashed_password):
+        if not verify_password(password, user_db.hashed_password):
             return False
-        return user
+        return user_db
     
     def login(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
+        print_message(f"Login attempt: {form_data.email}")
+        print(form_data.password)
         if (user_db := self.authenticate_user(form_data.email, form_data.password, db)) is False:
             raise exceptions.token_exception()
         
