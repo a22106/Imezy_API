@@ -460,7 +460,10 @@ class Api:
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
         user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
-        user_info['verified'] = db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first().__dict__["verified"]
+        if (is_verified := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
+            user_info['verified'] = False
+        else:
+            user_info['verified'] = is_verified.__dict__["verified"]
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
