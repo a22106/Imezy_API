@@ -1,51 +1,75 @@
+''' 할 일
+
+- [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
+- [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
+- [ ] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
+- [ ] 4. 생성된 사진 용량 줄여서 저장하기
+- [ ] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
+
+'''
+
 import base64
-import io
+import io, os
 import time
+import json
+import datetime
 import uvicorn
-from dotenv import load_dotenv
 from threading import Lock
 from io import BytesIO
+
 from gradio.processing_utils import decode_base64_to_file
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
 from secrets import compare_digest
 from datetime import datetime, timedelta
+from fastapi_jwt_auth import AuthJWT
+from fastapi_jwt_auth.exceptions import AuthJWTException
 
 import modules.shared as shared
-from modules import sd_samplers, deepbooru
+from modules import sd_samplers, deepbooru, sd_hijack
 from modules.api.models import *
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img, process_images
 from modules.extras import run_extras, run_pnginfo
+from modules.textual_inversion.textual_inversion import create_embedding, train_embedding
+from modules.textual_inversion.preprocess import preprocess
+from modules.hypernetworks.hypernetwork import create_hypernetwork, train_hypernetwork
 from PIL import PngImagePlugin,Image
-from modules.sd_models import checkpoints_list
+from modules.sd_models import checkpoints_list, find_checkpoint_config
 from modules.realesrgan_model import get_realesrgan_models
+from modules import devices
 from typing import List
 
 from passlib.context import CryptContext
-from .database import engine, SessionLocal
+from .database import engine, get_db
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 from . import models, credits
-from . import credits
-from . import Responses as Res
 
-
-# users
 from .users import *
-
-# auth
 from .auth import *
+from .logs import print_message
+from . import utils as api_utils
 
 models.Base.metadata.create_all(bind=engine)
 
-DEFAULT_CREDITS = 200
+DEFAULT_CREDITS = 500
+CREDITS_PER_IMAGE = 10
+with open('modules/api/configs.json', 'r') as f:
+    IMEZY_CONFIG = json.load(f)
 
 def upscaler_to_index(name: str):
     try:
         return [x.name.lower() for x in shared.sd_upscalers].index(name.lower())
     except:
         raise HTTPException(status_code=400, detail=f"Invalid upscaler, needs to be on of these: {' , '.join([x.name for x in sd_upscalers])}")
+
+def script_name_to_index(name, scripts):
+    try:
+        return [script.title().lower() for script in scripts].index(name.lower())
+    except:
+        raise HTTPException(status_code=422, detail=f"Script '{name}' not found")
 
 def validate_sampler_name(name):
     config = sd_samplers.all_samplers_map.get(name, None)
@@ -83,22 +107,50 @@ def encode_pil_to_base64(image):
         )
         bytes_data = output_bytes.getvalue()
     return base64.b64encode(bytes_data)
+
+def convert_img_to_webp(image):
+    with io.BytesIO() as output_bytes:
+        image.save(output_bytes, "WEBP")
+        bytes_data = output_bytes.getvalue()
+    return base64.b64encode(bytes_data)
     
+def api_middleware(app: FastAPI):
+    @app.middleware("http")
+    async def log_and_time(req: Request, call_next):
+        ts = time.time()
+        res: Response = await call_next(req)
+        duration = str(round(time.time() - ts, 4))
+        res.headers["X-Process-Time"] = duration
+        endpoint = req.scope.get('path', 'err')
+        if shared.cmd_opts.api_log and endpoint.startswith('/sdapi'):
+            print('API {t} {code} {prot}/{ver} {method} {endpoint} {cli} {duration}'.format(
+                t = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+                code = res.status_code,
+                ver = req.scope.get('http_version', '0.0'),
+                cli = req.scope.get('client', ('0:0.0.0', 0))[0],
+                prot = req.scope.get('scheme', 'err'),
+                method = req.scope.get('method', 'err'),
+                endpoint = endpoint,
+                duration = duration,
+            ))
+        return res
+
 class Api:
     def __init__(self, app: FastAPI, queue_lock: Lock):
         if shared.cmd_opts.api_auth:
-            self.credenticals = dict()
+            self.credentials = dict()
             for auth in shared.cmd_opts.api_auth.split(","):
                 user, password = auth.split(":")
-                self.credenticals[user] = password
+                self.credentials[user] = password
 
         self.router = APIRouter()
         self.app = app
         self.queue_lock = queue_lock
+        api_middleware(self.app)
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
-        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageResponse)
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageAuthResponse)
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
-        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageResponse)
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageAuthResponse)
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
@@ -116,27 +168,49 @@ class Api:
         self.add_api_route("/sdapi/v1/hypernetworks", self.get_hypernetworks, methods=["GET"], response_model=List[HypernetworkItem])
         self.add_api_route("/sdapi/v1/face-restorers", self.get_face_restorers, methods=["GET"], response_model=List[FaceRestorerItem])
         self.add_api_route("/sdapi/v1/realesrgan-models", self.get_realesrgan_models, methods=["GET"], response_model=List[RealesrganItem])
-        self.add_api_route("/sdapi/v1/prompt-styles", self.get_promp_styles, methods=["GET"], response_model=List[PromptStyleItem])
+        self.add_api_route("/sdapi/v1/prompt-styles", self.get_prompt_styles, methods=["GET"], response_model=List[PromptStyleItem])
         self.add_api_route("/sdapi/v1/artist-categories", self.get_artists_categories, methods=["GET"], response_model=List[str])
         self.add_api_route("/sdapi/v1/artists", self.get_artists, methods=["GET"], response_model=List[ArtistItem])
+        self.add_api_route("/sdapi/v1/embeddings", self.get_embeddings, methods=["GET"], response_model=EmbeddingsResponse)
+        self.add_api_route("/sdapi/v1/refresh-checkpoints", self.refresh_checkpoints, methods=["POST"])
+        self.add_api_route("/sdapi/v1/create/embedding", self.create_embedding, methods=["POST"], response_model=CreateResponse)
+        self.add_api_route("/sdapi/v1/create/hypernetwork", self.create_hypernetwork, methods=["POST"], response_model=CreateResponse)
+        self.add_api_route("/sdapi/v1/preprocess", self.preprocess, methods=["POST"], response_model=PreprocessResponse)
+        self.add_api_route("/sdapi/v1/train/embedding", self.train_embedding, methods=["POST"], response_model=TrainResponse)
+        self.add_api_route("/sdapi/v1/train/hypernetwork", self.train_hypernetwork, methods=["POST"], response_model=TrainResponse)
 
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
-        self.add_api_route("/user/login", self.login_for_access_token, methods=["POST"])
-        self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
+        self.add_api_route("/user/login", self.login, methods=["POST"])
+        # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
+        self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"])
+        self.add_api_route("/user/logout", self.logout, methods=["POST"])
         self.add_api_route("/user/read_user_info", self.read_user_info, methods=["GET"])
         self.add_api_route("/user/read/{user_id}", self.read_user_by_id, methods=["GET"])
         self.add_api_route("/user/read_all", self.read_all_users, methods=["GET"])
-        self.add_api_route("/user/update_password", self.update_password, methods=["PUT"])
+        self.add_api_route("/user/update_password", self.update_password, methods=["PUT"], response_model=UpdatePasswordResponse)
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
+        self.add_api_route("/user/email/verify/send", self.verify_email_send_code, methods=["POST"])
+        self.add_api_route("/user/email/verify/check", self.verify_email_check_code, methods=["POST"])
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
-        self.add_api_route("/credits/update/{user_id}", self.update_cred_by_id, methods=["PUT"])
+        self.add_api_route("/credits/update", self.update_cred, methods=["PUT"], response_model=UpdateCreditsResponse)
         
+        self.add_api_route("/image/search", self.search_image, methods=["GET"])
+        self.add_api_route("/image/search_compressed", self.search_image_compressed, methods=["GET"])
+        self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
+        self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
+        
+        @self.app.exception_handler(AuthJWTException)
+        def authjwt_exception_handler(request: Request, exc: AuthJWTException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.message},
+            )
         # self.add_api_route("/extra/res_codes", self.get_res_codes, methods=["GET"])
         
     # def get_res_codes(self):
@@ -292,11 +366,29 @@ class Api:
         print_message(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
+        elif db.query(models.UsersDB).filter(models.UsersDB.email == req.email).first():
+            raise HTTPException(status_code=400, detail="Email already exists")
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
-        user_info.email = req.email
+        current_email = user['email']
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == current_email).first()
+        if user_db is None:
+            print_message(f"The token is invalid({current_email}). Please login again.")
+            raise HTTPException(status_code=401, detail=f"The token is invalid({current_email}). Please login again.")
+        user_db.email = req.email
         db.commit()
-        return {"message": "Email updated to '{}' successfully".format(req.email)}
+
+        try:
+            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+            refresh_token_expires = timedelta(minutes=REFRESH_TOKEN_EXPIRES_MINUTES)
+            access_token = create_access_token(email=user_db.email, user_id=user["user_id"], expires_delta=access_token_expires)
+            refresh_token = create_refresh_token(email=user_db.email, user_id=user["user_id"], expires_delta=refresh_token_expires)
+            response = {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+            response.update({"message": "Email updated to '{}' successfully".format(req.email)})
+        except:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Could not update email")
+
+        return response
     
     def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
@@ -318,23 +410,23 @@ class Api:
             db.rollback()
             raise HTTPException(status_code=500, detail="Could not update username")
     
-    def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    def delete_user_by_id(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         
         authenticated_access_token_check(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
-            print("User is not admin")
-            raise get_admin_exception()
+            print_message("User is not admin")
+            raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         username = user_info.username
-        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info.email).first()
+        credits_info = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info.email).first()
         if user_info is not None:
             db.delete(credits_info)
             db.delete(user_info)
             db.commit()
-            print(f"User {user_id}:{username} deleted")
+            print_message(f"User {user_id}:{username} deleted")
             return {"message": f"User {user_id}:{username} deleted"}
-        raise HTTPException(status_code=404, detail="User not found")
+        raise exceptions.get_user_not_found_exception()
     
     def user_update_history(self, user: dict, db: Session = Depends(get_db)):
         user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
@@ -348,15 +440,15 @@ class Api:
         return read_users(db)
 
     def read_user_by_id(self, user_id: int, 
-                        user: dict = Depends(get_current_user),
+                        user: dict = Depends(access_token_auth),
                         db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
-        raise HTTPException(status_code=404, detail="User not found")
+        raise exceptions.get_user_not_found_exception()
 
-    def read_user_info(self, user: dict = Depends(get_current_user),
+    def read_user_info(self, user: dict = Depends(access_token_auth),
                          db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
         
@@ -365,11 +457,14 @@ class Api:
         except AttributeError:
             raise HTTPException(status_code=404, detail=f"User not found with email {user['email']}")
         
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.owner_email == user_info["email"]).first().__dict__["credits"]
-        print(f'Read user info: {user_info["email"]}')
+        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
+        if (is_verified := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
+            user_info['verified'] = False
+        else:
+            user_info['verified'] = is_verified.__dict__["verified"]
+        print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
     def authenticate_user(self, email, password, db):
@@ -382,7 +477,7 @@ class Api:
             return False
         return user
     
-    def login_for_access_token(self, form_data: OAuth2PasswordRequestForm = Depends(),
+    def login(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
@@ -451,13 +546,11 @@ class Api:
         refresh_token = authorize.create_refresh_token(subject=user.email)
         return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
     
-    def get_access_token(self, refresh_token: str, db: Session = Depends(get_db)):
-        pass
         
 
-    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(get_current_user)):
+    def update_password(self, user: UpdatePasswordRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
         if not auth:
-            raise get_user_exception()
+            raise exceptions.get_user_exception()
         if auth["email"] != user.email:
             raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
         
@@ -466,18 +559,20 @@ class Api:
         elif not update_password(db, user): # update_password returns True if password was updated. it updates the password it self
             raise HTTPException(status_code=400, detail="Incorrect old password")
         
-        return {"detail": "Password updated"}
+        return UpdatePasswordResponse(info="Password updated successfully")
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
+        print_message(f"Creating a new user. email: {create_user.email}, username: {create_user.username}")
+        
         is_exist = []
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.username == create_user.username).first())
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
         if is_exist[0]:
-            print(f"The username '{create_user.username}' is already in use")
+            print_message(f"The username '{create_user.username}' is already in use")
             raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use")
         elif is_exist[1]:
-            print(f"The email {create_user.email} is already in use")
+            print_message(f"The email {create_user.email} is already in use")
             raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use")
         
         create_user_model = models.UsersDB()
@@ -486,11 +581,12 @@ class Api:
         create_user_model.is_active = create_user.is_active
         create_user_model.hashed_password = get_password_hashed(create_user.password)
         create_user_model.is_admin = create_user.is_admin
-        print(f"Creating user: {create_user_model.email}, {create_user_model.username}")
+        print_message(f"Creating user: {create_user_model.email}, {create_user_model.username}")
         db.add(create_user_model)
+        
         try:
             db.commit()
-            print(f'User {create_user_model.email} created successfully')
+            print_message(f'User {create_user_model.email} created successfully')
             if create_user.is_admin:
                 add_admin = models.UsersAdminDB()
                 add_admin.email = create_user.email.lower()
@@ -498,60 +594,62 @@ class Api:
                 db.commit()
         except exc.IntegrityError:
             db.rollback()
-            print("User already exist")
+            print_message("User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         except FlushError:
             db.rollback()
-            print(f"User already exist")
+            print_message(f"User already exist")
             raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
         
         
         new_credit = models.CreditsDB()
-        new_credit.owner_email = create_user_model.email
+        new_credit.email = create_user_model.email
         db.add(new_credit)
         
         try:
             db.commit()
-            print(f'Credits for user {create_user_model.email} created successfully')
+            print_message(f'Credits for user {create_user_model.email} created successfully')
         except exc.IntegrityError:
             db.rollback()
             db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
             db.commit()
-            print(f"Failed to create credits for the user {create_user_model.email}")
+            print_message(f"Failed to create credits for the user {create_user_model.email}")
             raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
         except FlushError:
             db.rollback()
             db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
             db.commit()
-            print(f"Failed to create credits for the user {create_user_model.email}")
+            print_message(f"Failed to create credits for the user {create_user_model.email}")
             raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
 
         return {"message": f"User {create_user.username} created successfully"}
     
-    def update_credits(self, auth: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        if not auth:
-            raise get_user_exception()
-        user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
-        if user is None:
-            raise get_user_exception()
-        user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
-        if user_credits is None:
-            raise get_user_exception()
-        user_credits.credits = user_credits.credits + user_credits.credits_inc
-        db.commit()
-        return {"message": f"Credits updated for user {user.username}"}
+    # def update_credits(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    #     if not auth:
+    #         raise exceptions.get_user_exception()
+    #     print_message(f"Updating credits for user {auth['email']}")
+        
+    #     user = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
+    #     if user is None:
+    #         raise exceptions.get_user_exception()
+    #     user_credits = db.query(models.CreditsDB).filter(models.CreditsDB.user_id == user.id).first()
+    #     if user_credits is None:
+    #         raise exceptions.get_user_exception()
+    #     user_credits.credits = user_credits.credits + user_credits.credits_inc
+    #     db.commit()
+    #     return {"message": f"Credits updated for user {user.username}"}
     
     def make_admin(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
-            print("User is not admin")
-            raise get_admin_exception()
+            print_message("User is not admin")
+            raise exceptions.get_admin_exception()
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             user_info.is_admin = True
             db.commit()
-            print(f"User {user_id}:{user_info.username} is now admin")
+            print_message(f"User {user_id}:{user_info.username} is now admin")
             return {"message": f"User {user_id}:{user_info.username} is now admin"}
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -560,16 +658,15 @@ class Api:
             return self.app.add_api_route(path, endpoint, dependencies=[Depends(self.auth)], **kwargs)
         return self.app.add_api_route(path, endpoint, **kwargs)
 
-    def auth(self, credenticals: HTTPBasicCredentials = Depends(HTTPBasic())):
-        if credenticals.username in self.credenticals:
-            if compare_digest(credenticals.password, self.credenticals[credenticals.username]):
+    def auth(self, credentials: HTTPBasicCredentials = Depends(HTTPBasic())):
+        if credentials.username in self.credentials:
+            if compare_digest(credentials.password, self.credentials[credentials.username]):
                 return True
 
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Basic"})
 
     def text2imgapi(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI):
         populate = txt2imgreq.copy(update={ # Override __init__ params
-            "sd_model": shared.sd_model,
             "sampler_name": validate_sampler_name(txt2imgreq.sampler_name or txt2imgreq.sampler_index),
             "do_not_save_samples": True,
             "do_not_save_grid": True
@@ -577,19 +674,19 @@ class Api:
         )
         if populate.sampler_name:
             populate.sampler_index = None  # prevent a warning later on
-        p = StableDiffusionProcessingTxt2Img(**vars(populate))
-        # Override object param
-
-        shared.state.begin()
 
         with self.queue_lock:
-            processed = process_images(p)
+            p = StableDiffusionProcessingTxt2Img(sd_model=shared.sd_model, **vars(populate))
 
-        shared.state.end()
+            shared.state.begin()
+            processed = process_images(p)
+            shared.state.end()
+
 
         b64images = list(map(encode_pil_to_base64, processed.images))
+        b64images_compressed = list(map(convert_img_to_webp, processed.images))
 
-        return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
+        return TextToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
@@ -650,10 +747,10 @@ class Api:
 
         mask = img2imgreq.mask
         if mask:
+            print_message(mask[:100])
             mask = decode_base64_to_image(mask)
 
         populate = img2imgreq.copy(update={ # Override __init__ params
-            "sd_model": shared.sd_model,
             "sampler_name": validate_sampler_name(img2imgreq.sampler_name or img2imgreq.sampler_index),
             "do_not_save_samples": True,
             "do_not_save_grid": True,
@@ -665,24 +762,23 @@ class Api:
 
         args = vars(populate)
         args.pop('include_init_images', None)  # this is meant to be done by "exclude": True in model, but it's for a reason that I cannot determine.
-        p = StableDiffusionProcessingImg2Img(**args)
-
-        p.init_images = [decode_base64_to_image(x) for x in init_images]
-
-        shared.state.begin()
 
         with self.queue_lock:
-            processed = process_images(p)
+            p = StableDiffusionProcessingImg2Img(sd_model=shared.sd_model, **args)
+            p.init_images = [decode_base64_to_image(x) for x in init_images]
 
-        shared.state.end()
+            shared.state.begin()
+            processed = process_images(p)
+            shared.state.end()
 
         b64images = list(map(encode_pil_to_base64, processed.images))
+        b64images_compressed = list(map(convert_img_to_webp, processed.images))
 
         if not img2imgreq.include_init_images:
             img2imgreq.init_images = None
             img2imgreq.mask = None
 
-        return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
+        return ImageToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(img2imgreq), info=json.loads(processed.js()))
 
     def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
                         auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -736,9 +832,9 @@ class Api:
         reqDict['image'] = decode_base64_to_image(reqDict['image'])
 
         with self.queue_lock:
-            result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", **reqDict)
+            result = run_extras(extras_mode=0, image_folder="", input_dir="", output_dir="", save_output=False, **reqDict)
 
-        return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
+        return ExtrasSingleImageResponse(images=[encode_pil_to_base64(result[0][0])], html_info=result[1])
     
     def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, 
                                      auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -760,7 +856,7 @@ class Api:
         reqDict.pop('imageList')
 
         with self.queue_lock:
-            result = run_extras(extras_mode=1, image="", input_dir="", output_dir="", **reqDict)
+            result = run_extras(extras_mode=1, image="", input_dir="", output_dir="", save_output=False, **reqDict)
 
         return ExtrasBatchImagesResponse(images=list(map(encode_pil_to_base64, result[0])), html_info=result[1])
 
@@ -803,7 +899,7 @@ class Api:
     def interrogateapi(self, interrogatereq: InterrogateRequest):
         image_b64 = interrogatereq.image
         if image_b64 is None:
-            raise HTTPException(status_code=404, detail="Image not found") 
+            raise HTTPException(status_code=404, detail="Image not found")
 
         img = decode_base64_to_image(image_b64)
         img = img.convert('RGB')
@@ -816,7 +912,7 @@ class Api:
                 processed = deepbooru.model.tag(img)
             else:
                 raise HTTPException(status_code=404, detail="Model not found")
-        
+
         return InterrogateResponse(caption=processed)
 
     def interruptapi(self):
@@ -861,7 +957,7 @@ class Api:
         return upscalers
 
     def get_sd_models(self):
-        return [{"title":x.title, "model_name":x.model_name, "hash":x.hash, "filename": x.filename, "config": x.config} for x in checkpoints_list.values()]
+        return [{"title":x.title, "model_name":x.model_name, "hash":x.hash, "filename": x.filename, "config": find_checkpoint_config(x)} for x in checkpoints_list.values()]
 
     def get_hypernetworks(self):
         return [{"name": name, "path": shared.hypernetworks[name]} for name in shared.hypernetworks]
@@ -872,7 +968,7 @@ class Api:
     def get_realesrgan_models(self):
         return [{"name":x.name,"path":x.data_path, "scale":x.scale} for x in get_realesrgan_models(None)]
 
-    def get_promp_styles(self):
+    def get_prompt_styles(self):
         styleList = []
         for k in shared.prompt_styles.styles:
             style = shared.prompt_styles.styles[k]
@@ -886,10 +982,124 @@ class Api:
     def get_artists(self):
         return [{"name":x[0], "score":x[1], "category":x[2]} for x in shared.artist_db.artists]
     
-    def not_authenticated(self, user: dict):
-        if user is None:
-            print("User is None")
-            raise get_user_exception()
+    def not_authenticated_access_token(self, auth: dict, db: Session = None):
+        if db:
+            if (user_db := db.query(UsersDB).filter(UsersDB.email == auth['email']).first()) is None:
+                print_message("User is not in database")
+                raise exceptions.get_user_exception()
+        
+        if auth is None:
+            print_message("User is not authenticated")
+            raise exceptions.get_user_exception()
+        if auth['type'] == 'refresh':
+            return False
+    
+
+    def get_embeddings(self):
+        db = sd_hijack.model_hijack.embedding_db
+
+        def convert_embedding(embedding):
+            return {
+                "step": embedding.step,
+                "sd_checkpoint": embedding.sd_checkpoint,
+                "sd_checkpoint_name": embedding.sd_checkpoint_name,
+                "shape": embedding.shape,
+                "vectors": embedding.vectors,
+            }
+
+        def convert_embeddings(embeddings):
+            return {embedding.name: convert_embedding(embedding) for embedding in embeddings.values()}
+
+        return {
+            "loaded": convert_embeddings(db.word_embeddings),
+            "skipped": convert_embeddings(db.skipped_embeddings),
+        }
+
+    def refresh_checkpoints(self):
+        shared.refresh_checkpoints()
+
+    def create_embedding(self, args: dict):
+        try:
+            shared.state.begin()
+            filename = create_embedding(**args) # create empty embedding
+            sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings() # reload embeddings so new one can be immediately used
+            shared.state.end()
+            return CreateResponse(info = "create embedding filename: {filename}".format(filename = filename))
+        except AssertionError as e:
+            shared.state.end()
+            return TrainResponse(info = "create embedding error: {error}".format(error = e))
+
+    def create_hypernetwork(self, args: dict):
+        try:
+            shared.state.begin()
+            filename = create_hypernetwork(**args) # create empty embedding
+            shared.state.end()
+            return CreateResponse(info = "create hypernetwork filename: {filename}".format(filename = filename))
+        except AssertionError as e:
+            shared.state.end()
+            return TrainResponse(info = "create hypernetwork error: {error}".format(error = e))
+
+    def preprocess(self, args: dict):
+        try:
+            shared.state.begin()
+            preprocess(**args) # quick operation unless blip/booru interrogation is enabled
+            shared.state.end()
+            return PreprocessResponse(info = 'preprocess complete')
+        except KeyError as e:
+            shared.state.end()
+            return PreprocessResponse(info = "preprocess error: invalid token: {error}".format(error = e))
+        except AssertionError as e:
+            shared.state.end()
+            return PreprocessResponse(info = "preprocess error: {error}".format(error = e))
+        except FileNotFoundError as e:
+            shared.state.end()
+            return PreprocessResponse(info = 'preprocess error: {error}'.format(error = e))
+
+    def train_embedding(self, args: dict):
+        try:
+            shared.state.begin()
+            apply_optimizations = shared.opts.training_xattention_optimizations
+            error = None
+            filename = ''
+            if not apply_optimizations:
+                sd_hijack.undo_optimizations()
+            try:
+                embedding, filename = train_embedding(**args) # can take a long time to complete
+            except Exception as e:
+                error = e
+            finally:
+                if not apply_optimizations:
+                    sd_hijack.apply_optimizations()
+                shared.state.end()
+            return TrainResponse(info = "train embedding complete: filename: {filename} error: {error}".format(filename = filename, error = error))
+        except AssertionError as msg:
+            shared.state.end()
+            return TrainResponse(info = "train embedding error: {msg}".format(msg = msg))
+
+    def train_hypernetwork(self, args: dict):
+        try:
+            shared.state.begin()
+            initial_hypernetwork = shared.loaded_hypernetwork
+            apply_optimizations = shared.opts.training_xattention_optimizations
+            error = None
+            filename = ''
+            if not apply_optimizations:
+                sd_hijack.undo_optimizations()
+            try:
+                hypernetwork, filename = train_hypernetwork(*args)
+            except Exception as e:
+                error = e
+            finally:
+                shared.loaded_hypernetwork = initial_hypernetwork
+                shared.sd_model.cond_stage_model.to(devices.device)
+                shared.sd_model.first_stage_model.to(devices.device)
+                if not apply_optimizations:
+                    sd_hijack.apply_optimizations()
+                shared.state.end()
+            return TrainResponse(info = "train embedding complete: filename: {filename} error: {error}".format(filename = filename, error = error))
+        except AssertionError as msg:
+            shared.state.end()
+            return TrainResponse(info = "train embedding error: {error}".format(error = error))
 
     def launch(self, server_name, port):
         self.app.include_router(self.router)
@@ -906,7 +1116,19 @@ class Api:
         user_email = user.get("email", None)
         return credits.read_creds(db, user_email)
     
-    def update_cred_by_id(self, user_id: int, cred: UpdateCreditsRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
-        user_email = db.query(models.User).filter(models.User.id == user_id).first().email
-        return credits.update_cred_by_id(user_email, cred, db)
+    
+    def update_cred(self, request: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        if auth['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=auth)
+        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {request.credits_inc}, target user email: {request.email}")
+        
+        request = request.dict()
+        user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == auth.get("email", None)).first()
+        
+        # if the user is not admin, he can only update his own credits
+        if user_admin_db != None or request['email'] == auth['email']:
+            print_message("User is admin or updating his own credits")
+            current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
+            return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
+        else:
+            raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")

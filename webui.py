@@ -1,15 +1,24 @@
 import os
+import sys
 import threading
 import time
 import importlib
 import signal
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from modules import import_hook, errors
 from modules.call_queue import wrap_queued_call, queue_lock, wrap_gradio_gpu_call
 from modules.paths import script_path
+
+import torch
+# Truncate version number of nightly/local build of PyTorch to not cause exceptions with CodeFormer or Safetensors
+if ".dev" in torch.__version__ or "+git" in torch.__version__:
+    torch.__version__ = re.search(r'[\d.]+[\d]', torch.__version__).group(0)
 
 from modules import shared, devices, sd_samplers, upscaler, extensions, localization, ui_tempdir
 import modules.codeformer_model as codeformer
@@ -54,12 +63,20 @@ def initialize():
     gfpgan.setup_model(cmd_opts.gfpgan_models_path)
     shared.face_restorers.append(modules.face_restoration.FaceRestoration())
 
+    modelloader.list_builtin_upscalers()
     modules.scripts.load_scripts()
-
     modelloader.load_upscalers()
 
     modules.sd_vae.refresh_vae_list()
-    modules.sd_models.load_model()
+
+    try:
+        modules.sd_models.load_model()
+    except Exception as e:
+        errors.display(e, "loading stable diffusion model")
+        print("", file=sys.stderr)
+        print("Stable diffusion model failed to load, exiting", file=sys.stderr)
+        exit(1)
+
     shared.opts.onchange("sd_model_checkpoint", wrap_queued_call(lambda: modules.sd_models.reload_model_weights()))
     shared.opts.onchange("sd_vae", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
     shared.opts.onchange("sd_vae_as_default", wrap_queued_call(lambda: modules.sd_vae.reload_vae_weights()), call=False)
@@ -87,23 +104,18 @@ def initialize():
 
     signal.signal(signal.SIGINT, sigint_handler)
 
-
 def setup_cors(app):
     if cmd_opts.cors_allow_origins and cmd_opts.cors_allow_origins_regex:
-        app.add_middleware(CORSMiddleware, allow_origins=cmd_opts.cors_allow_origins.split(','), 
-                           allow_origin_regex=cmd_opts.cors_allow_origins_regex, allow_credentials=True, allow_methods=['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE'], allow_headers=["*"])
+        app.add_middleware(CORSMiddleware, allow_origins=cmd_opts.cors_allow_origins.split(','), allow_origin_regex=cmd_opts.cors_allow_origins_regex, allow_methods=['*'], allow_credentials=True, allow_headers=["*"])
     elif cmd_opts.cors_allow_origins:
-        app.add_middleware(CORSMiddleware, allow_origins=cmd_opts.cors_allow_origins.split(','), 
-                           allow_credentials=True, allow_methods=['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE'], allow_headers=["*"])
+        app.add_middleware(CORSMiddleware, allow_origins=cmd_opts.cors_allow_origins.split(','), allow_methods=['*'], allow_credentials=True, allow_headers=["*"])
     elif cmd_opts.cors_allow_origins_regex:
-        app.add_middleware(CORSMiddleware, allow_origin_regex=cmd_opts.cors_allow_origins_regex, 
-                           allow_credentials=True, allow_methods=['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE'], allow_headers=["*"])
+        app.add_middleware(CORSMiddleware, allow_origin_regex=cmd_opts.cors_allow_origins_regex, allow_methods=['*'], allow_credentials=True, allow_headers=["*"])
 
 def create_api(app):
     from modules.api.api import Api
     api = Api(app, queue_lock)
     return api
-
 
 def wait_on_server(demo=None):
     while 1:
@@ -122,6 +134,7 @@ def api_only():
     app = FastAPI()
     setup_cors(app)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    
     api = create_api(app)
 
     modules.script_callbacks.app_started_callback(None, app)
@@ -155,8 +168,8 @@ def webui():
 
         # gradio uses a very open CORS policy via app.user_middleware, which makes it possible for
         # an attacker to trick the user into opening a malicious HTML page, which makes a request to the
-        # running web ui and do whatever the attcker wants, including installing an extension and
-        # runnnig its code. We disable this here. Suggested by RyotaK.
+        # running web ui and do whatever the attacker wants, including installing an extension and
+        # running its code. We disable this here. Suggested by RyotaK.
         app.user_middleware = [x for x in app.user_middleware if x.cls.__name__ != 'CORSMiddleware']
 
         setup_cors(app)
@@ -170,23 +183,24 @@ def webui():
         modules.script_callbacks.app_started_callback(shared.demo, app)
 
         wait_on_server(shared.demo)
+        print('Restarting UI...')
 
         sd_samplers.set_samplers()
 
-        print('Reloading extensions')
+        modules.script_callbacks.script_unloaded_callback()
         extensions.list_extensions()
 
         localization.list_localizations(cmd_opts.localizations_dir)
 
-        print('Reloading custom scripts')
+        modelloader.forbid_loaded_nonbuiltin_upscalers()
         modules.scripts.reload_scripts()
+        modules.script_callbacks.model_loaded_callback(shared.sd_model)
         modelloader.load_upscalers()
 
-        print('Reloading modules: modules.ui')
-        importlib.reload(modules.ui)
-        print('Refreshing Model List')
+        for module in [module for name, module in sys.modules.items() if name.startswith("modules.ui")]:
+            importlib.reload(module)
+
         modules.sd_models.list_models()
-        print('Restarting Gradio')
 
 
 if __name__ == "__main__":

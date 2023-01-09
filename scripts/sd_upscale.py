@@ -19,7 +19,7 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         info = gr.HTML("<p style=\"margin-bottom:0.75em\">Will upscale the image by the selected scale factor; use width and height sliders to set tile size</p>")
         overlap = gr.Slider(minimum=0, maximum=256, step=16, label='Tile overlap', value=64)
-        scale_factor = gr.Slider(minimum=1, maximum=4, step=1, label='Scale Factor', value=2)
+        scale_factor = gr.Slider(minimum=1.0, maximum=4.0, step=0.05, label='Scale Factor', value=2.0)
         upscaler_index = gr.Radio(label='Upscaler', choices=[x.name for x in shared.sd_upscalers], value=shared.sd_upscalers[0].name, type="index")
 
         return [info, overlap, upscaler_index, scale_factor]
@@ -35,8 +35,9 @@ class Script(scripts.Script):
         seed = p.seed
 
         init_img = p.init_images[0]
+        init_img = images.flatten(init_img, opts.img2img_background_color)
 
-        if (upscaler.name != "None"):
+        if upscaler.name != "None":
             img = upscaler.scaler.upscale(init_img, scale_factor, upscaler.data_path)
         else:
             img = init_img

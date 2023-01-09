@@ -6,7 +6,7 @@ from inflection import underscore
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img
 from modules.shared import sd_upscalers, opts, parser
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .database import Base, SessionLocal, engine
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
@@ -29,6 +29,7 @@ API_NOT_ALLOWED = [
     "sampler_noise_scheduler_override",
     "ddim_discretize"
 ]
+
 
 class ModelDef(BaseModel):
     """Assistance Class for Pydantic Dynamic Model Generation"""
@@ -105,24 +106,40 @@ class PydanticModelGenerator:
 StableDiffusionTxt2ImgProcessingAPI = PydanticModelGenerator(
     "StableDiffusionProcessingTxt2Img",
     StableDiffusionProcessingTxt2Img,
-    [{"key": "sampler_index", "type": str, "default": "Euler"}]
+    [{"key": "sampler_index", "type": str, "default": "Euler"}, {"key": "script_name", "type": str, "default": None}, {"key": "script_args", "type": list, "default": []}]
 ).generate_model()
 
 StableDiffusionImg2ImgProcessingAPI = PydanticModelGenerator(
     "StableDiffusionProcessingImg2Img",
     StableDiffusionProcessingImg2Img,
-    [{"key": "sampler_index", "type": str, "default": "Euler"}, {"key": "init_images", "type": list, "default": None}, {"key": "denoising_strength", "type": float, "default": 0.75}, {"key": "mask", "type": str, "default": None}, {"key": "include_init_images", "type": bool, "default": False, "exclude" : True}]
+    [{"key": "sampler_index", "type": str, "default": "Euler"}, {"key": "init_images", "type": list, "default": None}, {"key": "denoising_strength", "type": float, "default": 0.75}, {"key": "mask", "type": str, "default": None}, {"key": "include_init_images", "type": bool, "default": False, "exclude" : True}, {"key": "script_name", "type": str, "default": None}, {"key": "script_args", "type": list, "default": []}]
 ).generate_model()
 
 class TextToImageResponse(BaseModel):
     images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images_compressed: List[str] = Field(default=None, title="Image", description="The generated image compressed in base64 format.")
     parameters: dict
-    info: str
-
+    info: dict
+    
+class TextToImageAuthResponse(BaseModel):
+    images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images_compressed: List[str] = Field(default=None, title="Image", description="The generated image compressed in base64 format.")
+    parameters: dict
+    info: dict
+    credits: int
+    
 class ImageToImageResponse(BaseModel):
     images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images_compressed: List[str] = Field(default=None, title="Image", description="The generated image compressed in base64 format.")
     parameters: dict
-    info: str
+    info: dict
+    
+class ImageToImageAuthResponse(BaseModel):
+    images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images_compressed: List[str] = Field(default=None, title="Image", description="The generated image compressed in base64 format.")
+    parameters: dict
+    info: dict
+    credits: int
 
 class ExtrasBaseRequest(BaseModel):
     resize_mode: Literal[0, 1] = Field(default=0, title="Resize Mode", description="Sets the resize mode: 0 to upscale by upscaling_resize amount, 1 to upscale up to upscaling_resize_h x upscaling_resize_w.")
@@ -130,10 +147,10 @@ class ExtrasBaseRequest(BaseModel):
     gfpgan_visibility: float = Field(default=0, title="GFPGAN Visibility", ge=0, le=1, allow_inf_nan=False, description="Sets the visibility of GFPGAN, values should be between 0 and 1.")
     codeformer_visibility: float = Field(default=0, title="CodeFormer Visibility", ge=0, le=1, allow_inf_nan=False, description="Sets the visibility of CodeFormer, values should be between 0 and 1.")
     codeformer_weight: float = Field(default=0, title="CodeFormer Weight", ge=0, le=1, allow_inf_nan=False, description="Sets the weight of CodeFormer, values should be between 0 and 1.")
-    upscaling_resize: float = Field(default=2, title="Upscaling Factor", ge=1, le=4, description="By how much to upscale the image, only used when resize_mode=0.")
+    upscaling_resize: float = Field(default=2, title="Upscaling Factor", ge=1, le=8, description="By how much to upscale the image, only used when resize_mode=0.")
     upscaling_resize_w: int = Field(default=512, title="Target Width", ge=1, description="Target width for the upscaler to hit. Only used when resize_mode=1.")
     upscaling_resize_h: int = Field(default=512, title="Target Height", ge=1, description="Target height for the upscaler to hit. Only used when resize_mode=1.")
-    upscaling_crop: bool = Field(default=True, title="Crop to fit", description="Should the upscaler crop the image to fit in the choosen size?")
+    upscaling_crop: bool = Field(default=True, title="Crop to fit", description="Should the upscaler crop the image to fit in the chosen size?")
     upscaler_1: str = Field(default="None", title="Main upscaler", description=f"The name of the main upscaler to use, it has to be one of this list: {' , '.join([x.name for x in sd_upscalers])}")
     upscaler_2: str = Field(default="None", title="Secondary upscaler", description=f"The name of the secondary upscaler to use, it has to be one of this list: {' , '.join([x.name for x in sd_upscalers])}")
     extras_upscaler_2_visibility: float = Field(default=0, title="Secondary upscaler visibility", ge=0, le=1, allow_inf_nan=False, description="Sets the visibility of secondary upscaler, values should be between 0 and 1.")
@@ -146,7 +163,7 @@ class ExtrasSingleImageRequest(ExtrasBaseRequest):
     image: str = Field(default="", title="Image", description="Image to work on, must be a Base64 string containing the image's data.")
 
 class ExtrasSingleImageResponse(ExtraBaseResponse):
-    image: str = Field(default=None, title="Image", description="The generated image in base64 format.")
+    images: List[str] = Field(default=None, title="Image", description="The generated image in base64 format.")
 
 class FileData(BaseModel):
     data: str = Field(title="File data", description="Base64 representation of the file")
@@ -162,7 +179,8 @@ class PNGInfoRequest(BaseModel):
     image: str = Field(title="Image", description="The base64 encoded PNG image")
 
 class PNGInfoResponse(BaseModel):
-    info: str = Field(title="Image info", description="A string with all the info the image had")
+    info: str = Field(title="Image info", description="A string with the parameters used to generate the image")
+    items: dict = Field(title="Items", description="An object containing all the info the image had")
 
 class ProgressRequest(BaseModel):
     skip_current_image: bool = Field(default=False, title="Skip current image", description="Skip current image serialization")
@@ -179,6 +197,15 @@ class InterrogateRequest(BaseModel):
 
 class InterrogateResponse(BaseModel):
     caption: str = Field(default=None, title="Caption", description="The generated caption for the image.")
+
+class TrainResponse(BaseModel):
+    info: str = Field(title="Train info", description="Response string from train embedding or hypernetwork task.")
+
+class CreateResponse(BaseModel):
+    info: str = Field(title="Create info", description="Response string from create embedding or hypernetwork task.")
+
+class PreprocessResponse(BaseModel):
+    info: str = Field(title="Preprocess info", description="Response string from preprocessing task.")
 
 fields = {}
 for key, metadata in opts.data_labels.items():
@@ -245,6 +272,17 @@ class ArtistItem(BaseModel):
     score: float = Field(title="Score")
     category: str = Field(title="Category")
 
+class EmbeddingItem(BaseModel):
+    step: Optional[int] = Field(title="Step", description="The number of steps that were used to train this embedding, if available")
+    sd_checkpoint: Optional[str] = Field(title="SD Checkpoint", description="The hash of the checkpoint this embedding was trained on, if available")
+    sd_checkpoint_name: Optional[str] = Field(title="SD Checkpoint Name", description="The name of the checkpoint this embedding was trained on, if available. Note that this is the name that was used by the trainer; for a stable identifier, use `sd_checkpoint` instead")
+    shape: int = Field(title="Shape", description="The length of each individual vector in the embedding")
+    vectors: int = Field(title="Vectors", description="The number of vectors in the embedding")
+
+class EmbeddingsResponse(BaseModel):
+    loaded: Dict[str, EmbeddingItem] = Field(title="Loaded", description="Embeddings loaded for the current model")
+    skipped: Dict[str, EmbeddingItem] = Field(title="Skipped", description="Embeddings skipped for the current model (likely due to architecture incompatibility)")
+
 class CreateUserResponse(BaseModel):
     username: str = Field("piushwang", title="Username")
     email: Optional[str] = Field("bk22106@gmail.com", title="Email")
@@ -256,11 +294,9 @@ class JWTResponse(BaseModel):
     access_token: str = Field(title="Access Token")
     token_type: str = Field(title="Token Type")
 
-class UpdateUserRequest(BaseModel):
-    email: Optional[str] = Field
-    username: Optional[str] = Field
-    password: Optional[str] = Field
-    is_active: Optional[bool] = Field(default=True)
+class UserResponse(BaseModel):
+    email: str = Field(title="Email")
+    password: str = Field(title="Password")
 
 class UpdateUsernameRequest(BaseModel):
     username: str = Field(title="Username")
@@ -274,6 +310,9 @@ class UpdatePasswordRequest(BaseModel):
     old_password: str = Field(title="Old Password")
     new_password: str = Field(title="New Password")
     confirm_password: str = Field(title="confirm_password")
+    
+class UpdatePasswordResponse(BaseModel):
+    info: str = Field(title="Info")
 
 class UpdateUserRequest(BaseModel):
     email: Optional[str] = Field(title="Email")
@@ -282,8 +321,30 @@ class UpdateUserRequest(BaseModel):
     is_admin: Optional[bool] = Field(default=False)
     
 class UpdateCreditsRequest(BaseModel):
-    credits_inc: Optional[int] = Field(title="Credits")
+    email: str = Field(title="Email")
+    credits_inc: int = Field(title="Credits")
+
+class UpdateCreditsResponse(BaseModel):
+    info: str = Field(title="Info")
+    email: str = Field(title="Email")
+    credits_inc: int = Field(title="Credits Inc")
+    currunt_credits: int = Field(title="Current Credits")
     
+class DownloadImageRequest(BaseModel):
+    index: int = Field(title="Image Index")    
+    
+class VerifyEmailRequest(BaseModel):
+    email: str = Field(title="Email")
+    code: str = Field(title="Code")
+
+class AuthSettings(BaseModel):
+    SECRET_KEY_ACCESS = "secret_api_key"
+    SECRET_KEY_REFRESH = "secret_refresh"
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(hours=24)
+    REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
+
+
 
 # databases
 class UsersDB(Base):
@@ -291,14 +352,11 @@ class UsersDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
-    created_date = Column(DateTime, default=datetime.utcnow)
-    
-    # credits = relationship("CreditsDB", back_populates="owner")
-    # credits_history = relationship("CreditsHistoryDB", back_populates="user")
+    created_date = Column(DateTime, default=datetime.now)
 
 class CreditsDB(Base):
     __tablename__ = "credits"
@@ -306,11 +364,8 @@ class CreditsDB(Base):
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
-    last_updated = Column(DateTime, default=datetime.utcnow)
-    owner_email = Column(String, ForeignKey("users.email"))
-    
-    
-    # owner = relationship("UsersDB", back_populates="credits")
+    last_updated = Column(DateTime, default=datetime.now)
+    email = Column(String, ForeignKey("users.email"))
     
 class UsersAdminDB(Base):
     __tablename__ = "users_admin"
@@ -318,15 +373,36 @@ class UsersAdminDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
     
-    # user = relationship("UsersDB", back_populates="email")
     
+class RefreshTokenDB(Base):
+    __tablename__ = "r_token"
     
-# class CreditsHistoryDB(Base):
-#     __tablename__ = "cred_history"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, unique=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
     
-#     id = Column(Integer, primary_key=True, index=True)
-#     credits_inc = Column(Integer, default=0)
-#     updated = Column(DateTime, default=datetime.utcnow)
-#     user_email = Column(String, ForeignKey("users.email"))
+class CreditsUpdateDB(Base):
+    __tablename__ = "credits_update"
     
-#     user = relationship("UsersDB", back_populates="credits")
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    credits_inc = Column(Integer, default=0)
+    updated = Column(DateTime, default=datetime.now)
+    
+class ImezyUpdateDB(Base):
+    __tablename__ = "imezy_update"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    imezy_type = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+    num_imgs = Column(Integer, nullable=False)
+    
+class VerifyEmailDB(Base):
+    __tablename__ = "verify_email"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    code = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+    verified = Column(Boolean, default=False)

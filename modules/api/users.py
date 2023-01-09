@@ -1,16 +1,10 @@
 
-from .database import engine, SessionLocal
+from .database import engine, SessionLocal, get_db
 from . import models
 from .auth import verify_password, get_password_hashed
 
 from sqlalchemy.orm import Session
 
-def get_db():
-    try:
-        db = SessionLocal()
-        yield db
-    finally:
-        db.close()
 
 def read_users(db):
     """Read all users from the database.
@@ -32,10 +26,10 @@ def update_password(db: Session, user):
     """
     user_updating = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
 
-    if not verify_password(user.old_password, user_updating.hash_password):
+    if not verify_password(user.old_password, user_updating.hashed_password):
         return False
 
-    user_updating.hash_password = get_password_hashed(user.new_password)
+    user_updating.hashed_password = get_password_hashed(user.new_password)
     db.add(user_updating)
     db.commit()
     db.refresh(user_updating)
