@@ -69,12 +69,17 @@ def token_exception():
 def create_access_token(email: str, user_id: int, 
                     expires_delta: Optional[timedelta] = None):
     to_encode = {"email": email, "user_id": user_id}
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        expire = datetime.utcnow() + timedelta(hours=1)
+    
+        
+        
+    # update subject expire time and if it's access token
+    to_encode.update({"exp": expire, "type": "access"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_ACCESS, algorithm=ALGORITHM_ACCESS)
     return encoded_jwt
 
 # refresh token expires in 3 months
@@ -88,6 +93,30 @@ def create_refresh_token(email: str, user_id: int,
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def authenticated_access_token_check(auth: dict, db: Session = None):
+    '''
+    description:
+        - check if user is authenticated or not
+        - raise exception if user is not authenticated
+    args:
+        - auth: dict = {email: str, user_id: int, type: str}
+        - db: Session = database session
+    return:
+        - bool = True if user is authenticated, False if user is not authenticated
+    '''
+    
+    if db:
+        if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth['email']).first()) is None:
+            print("User is not in database")
+            raise exceptions.get_user_exception()
+    
+    if auth is None:
+        print("User is not authenticated")
+        raise exceptions.get_user_exception()
+    if auth['type'] == 'refresh':
+        return False
+    return True
 
 def get_password_hashed(password):
     return bcrypt_context.hash(password)

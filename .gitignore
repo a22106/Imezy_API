@@ -2,8 +2,10 @@ __pycache__
 *.ckpt
 *.safetensors
 *.pth
+*.ipynb
 *.db
 .env
+/generated/*
 /ESRGAN/*
 /SwinIR/*
 /repositories
@@ -34,7 +36,12 @@ notification.mp3
 /extensions
 /test/stdout.txt
 /test/stderr.txt
+/logs
 
 .nfs*
 .gitignore
 modules/api/updateDB.sql
+test_smtp.ipynb
+
+.env
+generated/*

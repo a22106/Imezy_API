@@ -142,8 +142,154 @@ class Api:
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
-    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+    def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message("search_image", auth)
+        
+        imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
+        if imezy_update_db is None:
+            return HTTPException(status_code=404, detail="No images found in the database.")
+        
+        response = []
+        for i, row in enumerate(imezy_update_db):
+            updated = datetime.strptime(str(row.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
+            
+            try:
+                # 이미지 저장된 json 파일 읽기
+                with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
+                    data = json.load(f)
+                if data["images"]:
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images"] })
+            except FileNotFoundError:
+                print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
+                return exceptions.get_file_not_exist_exception()
+                 
+        return response
+    
+    def search_image_compressed(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message("search_image", auth)
+        
+        imezy_update_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.email == auth['email'])
+        if imezy_update_db is None:
+            return HTTPException(status_code=404, detail="No images found in the database.")
+        
+        response = []
+        for i, row in enumerate(imezy_update_db):
+            updated = datetime.strptime(str(row.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S") # db의 updated 시간을 파일명에 맞게 변환
+            
+            try:
+                # 이미지 저장된 json 파일 읽기
+                with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
+                    data = json.load(f)
+                if data["images_compressed"]:
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images_compressed"] })
+            except FileNotFoundError:
+                print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
+                continue
+            except KeyError:
+                print(f"generated/{auth['email']}/{updated}.json 파일에 images_compressed가 없습니다.")
+                continue
+                 
+        return response
+    
+    def delete_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message(f"Delete image user: {auth['email']}, image_id: {image_id}")
+        
+        image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
+        if image_db is None:
+            return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} is not exist"}
+        elif image_db.email != auth['email']:
+            return exceptions.get_inappropriate_user_exception()
+        
+        image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
+        image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
+        try:
+            os.remove(f"generated/{image_type}/{auth['email']}/{image_updated}.json")
+        except FileNotFoundError:
+            print_message(f"Delete image file image_id: {image_id} is not exist")
+            return HTTPException(status_code=404, detail=f"Delete image file image_id: {image_id} is not exist")
+        try:
+            db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).delete()
+            db.commit()
+        except Exception as e:
+            print_message(e)
+            db.rollback()
+            print_message(f"Delete image user: {auth['email']}, image_id: {image_id} failed")
+            return HTTPException(status_code=404, detail=f"Delete image user: {auth['email']}, image_id: {image_id} failed")
+        
+        print_message(f"Delete image user: {auth['email']}, image_id: {image_id} success")
+        return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} success"}
+        
+    def download_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db), req: DownloadImageRequest = Depends()):
+        authenticated_access_token_check(auth)
+        print_message(f"Download image user: {auth['email']}, image_id: {image_id}")
+        
+        image_db = db.query(models.ImezyUpdateDB).filter(models.ImezyUpdateDB.id == image_id).first()
+        if image_db is None:
+            return HTTPException(status_code=404, detail=f"Download image user: {auth['email']}, image_id: {image_id} is not exist on db")
+        elif image_db.email != auth['email']:
+            return exceptions.get_inappropriate_user_exception()
+        
+        image_type =IMEZY_CONFIG['imezy_type1'][str(image_db.imezy_type)]
+        image_updated = datetime.strptime(str(image_db.updated), "%Y-%m-%d %H:%M:%S").strftime("%Y%m%d%H%M%S")
+        try:
+            with open(f"generated/{image_type}/{auth['email']}/{image_updated}.json", "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return HTTPException(status_code=404, detail=f"Download image user: {auth['email']}, image_id: {image_id} {image_updated}.json is not exist on file")
+            
+        if data["images"]:
+            return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
+        
+    def verify_email_send_code(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message(f"Verify email: {auth['email']} create code")
+        
+        from random import randint
+        code = randint(100000, 999999)
+
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
+            verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
+        
+            db.add(verify_email_db)
+            db.commit()
+        else:
+            verify_email_db.code = code
+            db.commit()        
+        
+        # subject = "Imezy 이메일 인증 코드"
+        subject = "Imezy Email Verification Code"
+        content = f"Your verification code is {code}\n Copy and paste the code into the verification code field."
+        
+        api_utils.send_email(auth["email"], subject, content)
+        
+        return {"detail": f"Sended 6-digits code to {auth['email']}"}
+    
+    def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
+        print_message(f"Check code: {req.email}")
+        
+        # db 불러오기
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email} is not exist")
+        
+        print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
+        
+        if int(verify_email_db.code) != int(req.code):
+            print_message(f"Code is not correct")
+            return HTTPException(status_code=404, detail=f"Code is not correct")
+        
+        verify_email_db.verified = True
+        db.commit()
+        
+        return {"detail": f"Code is correct"}
+        
+        
+    
+    def update_email(self, req: UpdateEmailRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(user)
+        print_message(f"req email: {req.email}, req confirm_email: {req.confirm_email}")
         if req.email != req.confirm_email:
             raise HTTPException(status_code=400, detail="Emails do not match")
         
@@ -152,16 +298,29 @@ class Api:
         db.commit()
         return {"message": "Email updated to '{}' successfully".format(req.email)}
     
-    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
-        user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first()
-        user_info.username = req
-        db.commit()
-        return {"message": "Username updated to '{}' successfully".format(req)}
+    def update_username(self, req: UpdateUsernameRequest, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(user)
+        if db.query(models.UsersDB).filter(models.UsersDB.username == req.username).first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        elif len(req.username) < 3:
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters long")
+        
+        user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user["user_id"]).first()
+        if not user_info:
+            raise exceptions.get_user_not_found_exception()
+        
+        user_info.username = req.username
+        try:
+            db.commit()
+            print_message(f"Username updated to {req.username} successfully")
+            return {"message": "Username updated to '{}' successfully".format(req.username)}
+        except AttributeError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Could not update username")
     
     def delete_user_by_id(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
         
-        self.not_authenticated(user)
+        authenticated_access_token_check(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise get_admin_exception()
@@ -191,7 +350,7 @@ class Api:
     def read_user_by_id(self, user_id: int, 
                         user: dict = Depends(get_current_user),
                         db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        authenticated_access_token_check(user)
         user_info = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
         if user_info is not None:
             return user_info
@@ -199,7 +358,12 @@ class Api:
 
     def read_user_info(self, user: dict = Depends(get_current_user),
                          db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+        authenticated_access_token_check(user)
+        
+        try:
+            user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
+        except AttributeError:
+            raise HTTPException(status_code=404, detail=f"User not found with email {user['email']}")
         
         user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
@@ -222,10 +386,69 @@ class Api:
                                  db: Session = Depends(get_db)):
         user = self.authenticate_user(form_data.email, form_data.password, db)
         if not user:
-            raise token_exception()
-        token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
-        access_token = create_access_token(email=user.email, user_id=user.id, expires_delta=token_expires)
-        refresh_token = create_refresh_token(email=user.email, user_id=user.id, expires_delta=token_expires)
+            raise exceptions.token_exception()
+        access_token = create_access_token(email=user.email, user_id=user.id)
+        refresh_token = create_refresh_token(email=user.email, user_id=user.id)
+        
+        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user.email).first()
+        # check if user has a refresh token is outdated
+        if not former_rtoken:
+            new_rtoken = models.RefreshTokenDB()
+            new_rtoken.token = refresh_token
+            new_rtoken.email = user.email
+            
+            db.add(new_rtoken)
+            db.commit()
+        else:
+            former_rtoken.token = refresh_token
+            db.commit()
+        
+        return {
+            "access_token": access_token, 
+            "refresh_token": refresh_token, 
+            "token_type": "bearer"}
+    
+    # get new access token with refresh token
+    def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refresh_token_auth)):
+        authenticated_access_token_check(auth)
+        
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()
+        if not user_db:
+            raise exceptions.token_exception()
+        
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
+        if not rtoken:
+            raise exceptions.token_exception()
+        
+        access_token = create_access_token(email=user_db.email, user_id=user_db.id)
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer"}
+    
+    # when user logs out, delete refresh token
+    def logout(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        
+        rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == auth["email"]).first()
+        if not rtoken:
+            raise exceptions.token_exception()
+        
+        db.delete(rtoken)
+        db.commit()
+        return {"message": f"user {auth['email']} logged out"}
+    
+    def login_new(self, user: UserResponse, authorize: AuthJWT = Depends(), db: Session = Depends(get_db)):
+        self.authenticate_user(user.email, user.password, db)
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == user.email).first()
+        if user_db is None:
+            raise exceptions.get_user_not_found_exception()
+        elif not verify_password(user.password, user_db.hashed_password):
+            raise exceptions.get_incorrent_password_exception
+        elif not user_db.is_active:
+            raise exceptions.get_not_active_user_exception()
+            
+        access_token = authorize.create_access_token(subject=user.email)
+        refresh_token = authorize.create_refresh_token(subject=user.email)
         return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
     
     def get_access_token(self, refresh_token: str, db: Session = Depends(get_db)):
@@ -318,8 +541,8 @@ class Api:
         db.commit()
         return {"message": f"Credits updated for user {user.username}"}
     
-    def make_admin(self, user_id: int, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+    def make_admin(self, user_id: int, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(user)
         if db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().is_admin == False:
             print("User is not admin")
             raise get_admin_exception()
@@ -368,11 +591,57 @@ class Api:
 
         return TextToImageResponse(images=b64images, parameters=vars(txt2imgreq), info=processed.js())
 
-    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: bool = Depends(get_current_user)):
-        if not auth:
-            raise get_user_exception()
-        print(f"User {auth['email']} is generating an image")
-        return self.text2imgapi(txt2imgreq)
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
+        # check auth email and if the user has enough credits
+        
+        user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
+        if user_db is None:
+            print_message("user is None exception")
+            raise exceptions.get_user_exception()
+        created_images_num = int(txt2imgreq.n_iter * txt2imgreq.batch_size)
+        
+        # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+        if user_db.credits < created_images_num * CREDITS_PER_IMAGE:
+            raise exceptions.not_enough_credits_exception()
+        
+        response = self.text2imgapi(txt2imgreq)
+        response_json = json.loads(response.json())
+        
+        # 이미지 압축 저장 to webp
+        response_images = response_json["images"]
+        
+        
+        # 이미지 생성 저장(json)
+        now = datetime.now().strftime('%Y%m%d%H%M%S')
+        if os.path.exists(f"generated/t2i/{auth['email']}") == False:
+            os.makedirs(f"generated/t2i/{auth['email']}")
+            
+        with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
+            json.dump(response_json, f, indent=4)
+            
+        # 이미지 생성 데이터베이스 기록
+        imezy_update_db = models.ImezyUpdateDB()
+        imezy_update_db.email = auth['email']
+        imezy_update_db.imezy_type = IMEZY_CONFIG["imezy_type"]['t2i']
+        imezy_update_db.num_imgs = created_images_num
+        imezy_update_db.updated = now
+        db.add(imezy_update_db)
+
+        # 크레딧 업데이트
+        updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
+        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == -1:
+            print_message(f"{auth['email']}'s update_cred failed")
+            raise exceptions.get_user_exception()
+        
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
+        
+        response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
+                                             parameters=response_json["parameters"], info=response_json["info"], 
+                                             credits=user_db.credits)
+                                           
+        return response
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
         init_images = img2imgreq.init_images
@@ -415,11 +684,51 @@ class Api:
 
         return ImageToImageResponse(images=b64images, parameters=vars(img2imgreq), info=processed.js())
 
-    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, auth: dict = Depends(get_current_user)):
-        if not auth:
-            raise get_user_exception()
+    def img2imgapi_auth(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI, 
+                        auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        print_message(f"User {auth['email']} is generating an image using img2imgapi_auth")
+        
+        user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
+        if user_db is None:
+            print_message("user is None exception")
+            raise exceptions.get_user_exception()
+        created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
+        
+        # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
+        if user_db.credits < created_images_num * CREDITS_PER_IMAGE:
+            raise exceptions.not_enough_credits_exception()
+        
+        response = self.img2imgapi(img2imgreq)
+        response_json = json.loads(response.json())
+                    
+        # save the response to the database
+        now = datetime.now().strftime('%Y%m%d%H%M%S')
+        if os.path.exists(f"generated/i2i/{auth['email']}") == False:
+            os.makedirs(f"generated/i2i/{auth['email']}")
+        with open(f"generated/i2i/{auth['email']}/{now}.json", "w") as f:
+            json.dump(response_json, f, indent=4)
+            
+        # 이미지 생성 데이터베이스 기록
+        imezy_update_db = models.ImezyUpdateDB()
+        imezy_update_db.email = auth['email']
+        imezy_update_db.imezy_type = IMEZY_CONFIG["imezy_type"]['i2i']
+        imezy_update_db.num_imgs = created_images_num
+        imezy_update_db.updated = now
+        db.add(imezy_update_db)
 
-        return self.img2imgapi(img2imgreq)
+        # update credits
+        updateing_creedit_inc = -created_images_num*CREDITS_PER_IMAGE # 10 credits per image
+        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == False:
+            raise exceptions.get_user_exception()
+        
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
+        
+        response = ImageToImageAuthResponse(images=response_json["images"], images_compressed=response_json["images_compressed"], 
+                                            parameters=response_json["parameters"], info=response_json["info"], 
+                                            credits=user_db.credits)
+        
+        return response
 
     def extras_single_image_api(self, req: ExtrasSingleImageRequest):
         reqDict = setUpscalers(req)
@@ -431,11 +740,13 @@ class Api:
 
         return ExtrasSingleImageResponse(image=encode_pil_to_base64(result[0][0]), html_info=result[1])
     
-    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, auth: dict = Depends(get_current_user)):
-        if not auth:
-            raise get_user_exception()
-
-        return self.extras_single_image_api(req)
+    def extras_single_image_api_auth(self, req: ExtrasSingleImageRequest, 
+                                     auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
+        
+        response = self.extras_single_image_api(req)
+        
+        return response
 
     def extras_batch_images_api(self, req: ExtrasBatchImagesRequest):
         reqDict = setUpscalers(req)
@@ -587,8 +898,11 @@ class Api:
     def read_all_creds(self, db: Session = Depends(get_db)):
         return credits.read_creds(db)
     
-    def read_cred_by_id(self, user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-        self.not_authenticated(user)
+    def read_cred_by_id(self, user: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+        if user['type'] == 'refresh':
+            return self.reissue_access_token(db=db, auth=user)
+        
+        authenticated_access_token_check(user)
         user_email = user.get("email", None)
         return credits.read_creds(db, user_email)
     
