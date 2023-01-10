@@ -6,7 +6,7 @@
 - [v] 4. 생성된 사진 용량 줄여서 저장하기
 - [v] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
 - [v] 6. 이메일 인증 기능 추가하기
-- [ ] 7. jwt에 이메일 인증 여부 내용 추가하기
+- [v] 7. jwt에 이메일 인증 여부 내용 추가하기
 
 '''
 
@@ -18,13 +18,16 @@ import datetime
 import uvicorn
 from threading import Lock
 from io import BytesIO
+from datetime import datetime, timedelta
 
 from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
+from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
+
 from secrets import compare_digest
-from datetime import datetime, timedelta
 from fastapi_jwt_auth import AuthJWT
 from fastapi_jwt_auth.exceptions import AuthJWTException
 
@@ -43,15 +46,16 @@ from modules import devices
 from typing import List
 
 from passlib.context import CryptContext
-from .database import engine, get_db
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
-from . import models, credits
 
+from .database import engine, get_db
+from . import models, credits
 from .users import *
 from .auth import *
 from .logs import print_message
+from .config import settings
 from . import utils as api_utils
 
 models.Base.metadata.create_all(bind=engine)
@@ -198,6 +202,8 @@ class Api:
         self.add_api_route("/user/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
         self.add_api_route("/user/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
         
+        self.add_api_route("/email/send", self.send_email, methods=["POST"])
+        
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
         self.add_api_route("/credits/update", self.update_cred, methods=["PUT"], response_model=UpdateCreditsResponse)
@@ -217,6 +223,15 @@ class Api:
         
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
+    
+    def send_email(self, subject, body, to_email):
+        env = Environment(
+            loader=FileSystemLoader("."),
+            autoescape=select_autoescape(["html", "xml"])
+        )
+        
+        
+        
     
     def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
@@ -333,6 +348,7 @@ class Api:
             db.commit()
         else:
             verify_email_db.code = code
+            verify_email_db.updated = datetime.now()
             db.commit()        
         
         # subject = "Imezy 이메일 인증 코드"
@@ -345,7 +361,8 @@ class Api:
     
     def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Check code: {req.email}")
-        expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
+        # expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
+        expire_seconds = 30 # 30초 후 만료
         
         # db 불러오기
         if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
@@ -354,7 +371,10 @@ class Api:
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
         # 만료 여부 확인
-        if verify_email_db.updated + timedelta(seconds=expire_seconds) < datetime.now():
+        now = datetime.now().replace(microsecond=0)
+        total_sec = (now - verify_email_db.updated).total_seconds()
+        print_message(f"datetime.now: {now}, updated: {verify_email_db.updated}, total_seconds: {total_sec}")
+        if (datetime.now() - verify_email_db.updated).total_seconds() > expire_seconds:
             print_message(f"Code is expired")
             return HTTPException(status_code=400, detail=f"Code is expired")
         # 코드 일치 여부 확인
@@ -463,6 +483,7 @@ class Api:
     def read_user_info(self, user: dict = Depends(access_token_auth),
                          db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
+        #import setdefault dict
         
         try:
             user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
@@ -471,11 +492,15 @@ class Api:
         
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
-        if (is_verified := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
+        if (credits_db_credits := db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().credits) is None:
+            user_info['credits'] = 0
+        else:
+            user_info['credits'] = credits_db_credits
+            
+        if (verified_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
             user_info['verified'] = False
         else:
-            user_info['verified'] = is_verified.__dict__["verified"]
+            user_info['verified'] = verified_db.verified
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
@@ -1158,3 +1183,5 @@ class Api:
             return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
+        
+

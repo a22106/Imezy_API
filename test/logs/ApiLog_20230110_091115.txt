@@ -1,0 +1,12 @@
+23-01-10 09:11:16: Server start time: 
+23-01-10 09:11:16: 20230110_091115
+23-01-10 09:11:16: Email address is valid: luckyboy321@aivill.co.kr
+23-01-10 09:11:16: Send email to luckyboy321@aivill.co.kr
+23-01-10 09:12:50: Email address is valid: luckyboy321@aivill.co.kr
+23-01-10 09:12:50: Send email to luckyboy321@aivill.co.kr
+23-01-10 09:13:17: Email address is valid: luckyboy321@aivill.co.kr
+23-01-10 09:13:17: Send email to luckyboy321@aivill.co.kr
+23-01-10 09:14:00: Email address is valid: luckyboy3214@naver.com
+23-01-10 09:14:00: Send email to luckyboy3214@naver.com
+23-01-10 09:14:36: Email address is valid: luckyboy3214@naver.com
+23-01-10 09:14:36: Send email to luckyboy3214@naver.com

@@ -1,6 +1,9 @@
 import smtplib, ssl
 import json
 
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
+from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
+
 from email_validator import validate_email, EmailNotValidError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -94,3 +97,17 @@ def send_email(receiver, subject, content, *attachments):
         server.sendmail(IMEZY_CONFIG["email"], receiver, msg_string)
     
     return {"status": "success", "detail": "Email sent successfully"}
+
+from .config import settings
+email_env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html', 'xml']))
+class EmailSchema(BaseModel):
+    email: str
+    subject: str
+    body: str
+    html: Optional[bool] = False
+    
+class Email:
+    def __init__(self, username: str, url: str, email: List[EmailStr]):
+        self.user = user
+        self.url = url
+        self.email = email

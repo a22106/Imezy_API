@@ -3,6 +3,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import os
 
+from .config import settings
+
 from dotenv import load_dotenv
 
 # IMEZY_DATABASE_URL = "sqlite:///./database/imezy.db"
@@ -14,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 IMEZYEB_PW = os.getenv("imezy_db")
 # IMEZY_DATABASE_URL = "mysql+pymysql://admin:{}@imezy.cfrm6ylsjgcg.ap-northeast-2.rds.amazonaws.com:3306/imezy?charset=utf8mb4".format(os.environ["imezy_db"])
-IMEZY_DATABASE_URL = "mysql+pymysql://admin:{}@imezy.cfrm6ylsjgcg.ap-northeast-2.rds.amazonaws.com:3306/imezy?charset=utf8mb4".format(IMEZYEB_PW)
+IMEZY_DATABASE_URL = "mysql+pymysql://admin:{}@imezy.cfrm6ylsjgcg.ap-northeast-2.rds.amazonaws.com:3306/imezy?charset=utf8mb4".format(settings.IMEZY_DB_PW)
 
 
 engine = create_engine(
