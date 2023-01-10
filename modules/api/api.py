@@ -376,11 +376,11 @@ class Api:
         print_message(f"datetime.now: {now}, updated: {verify_email_db.updated}, total_seconds: {total_sec}")
         if (datetime.now() - verify_email_db.updated).total_seconds() > expire_seconds:
             print_message(f"Code is expired")
-            return HTTPException(status_code=400, detail=f"Code is expired")
+            raise exceptions.code_exception_exception(0)
         # 코드 일치 여부 확인
         elif int(verify_email_db.code) != int(req.code):
             print_message(f"Code is not correct")
-            return HTTPException(status_code=404, detail=f"Code is not correct")
+            raise exceptions.code_exception_exception(1)
         
         verify_email_db.verified = True
         db.commit()
@@ -492,10 +492,12 @@ class Api:
         
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
-        if (credits_db_credits := db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().credits) is None:
+        
+        credits_db= db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first()
+        if credits_db is None:
             user_info['credits'] = 0
         else:
-            user_info['credits'] = credits_db_credits
+            user_info['credits'] = credits_db.credits
             
         if (verified_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
             user_info['verified'] = False

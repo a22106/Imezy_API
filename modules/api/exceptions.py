@@ -143,3 +143,19 @@ def not_verified_email_exception(email: str):
     )
     print_message(f"{email+' '}Email not verified")
     return exception
+
+def code_exception_exception(exception_code: int):
+    """
+    exception_code: 0 -> expired, 1 -> incorrect
+    """
+    exceptions = {0: "expired", 1: "incorrect"}
+    exception_type = exceptions.get(exception_code) # expired or incorrect
+    
+    exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST if exception_type == "expired" 
+                else status.HTTP_404_NOT_FOUND,
+        detail= f"code exception{' '+exception_type}",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    print_message(f"code exception{' '+exception_type}")
+    return exception
