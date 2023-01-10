@@ -28,7 +28,7 @@ def send_email(receiver, subject, content, *attachments):
     if not validate_email_address(receiver):
         return invalid_email_exception()
     
-    mail_domain = IMEZY_CONFIG["email"].split('@')[1].split('.')[0]
+    mail_domain = IMEZY_CONFIG["admin_email"].split('@')[1].split('.')[0]
     mail_port = 587
     if mail_domain == 'gmail':
         mail_server = "smtp.gmail.com"
@@ -41,7 +41,7 @@ def send_email(receiver, subject, content, *attachments):
     
     is_html = False
     # check if content is html
-    if "</html>" in content:
+    if "</html" in content:
         is_html = True
     
     

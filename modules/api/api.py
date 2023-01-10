@@ -349,7 +349,7 @@ class Api:
         else:
             verify_email_db.code = code
             verify_email_db.updated = datetime.now()
-            db.commit()        
+            db.commit()
         
         # subject = "Imezy 이메일 인증 코드"
         subject = "Imezy Email Verification Code"
@@ -387,18 +387,17 @@ class Api:
         
         return {"detail": f"Code is correct"}
         
-        
     def feedback_email_send(self, req: FeedbackEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Send feedback email: {req.email}")
         
-        feedback_type = IMEZY_CONFIG['feedback_type'][str(req.feedback_type)]
+        feedback_type = IMEZY_CONFIG['feedback_type'][str(req.type)]
         subject = req.subject
-        content = f"User: {req.email}\nContent: {req.content}"
+        content = f"Feedback type: {feedback_type}\n\nSent from: {req.email}\n\n{req.content}"
         email = req.email
         
-        api_utils.send_email(IMEZY_CONFIG['feedback_email'], subject, content)
+        api_utils.send_email(IMEZY_CONFIG["admin_email"], subject, content)
         
-        return {"detail": f"Sended feedback email to {IMEZY_CONFIG['feedback_email']}"}
+        return {"detail": f"Sended feedback email to {email}"}
         
     
     def update_email(self, req: UpdateEmailRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
