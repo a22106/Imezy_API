@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 
 from .exceptions import invalid_email_exception
 from .logs import print_message
-
+from .config import settings
 
 with open('/data/StableDiffusion/stable-diffusion-webui-test/modules/api/configs.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
@@ -21,42 +21,6 @@ def validate_email_address(email):
         return True    
     except EmailNotValidError as e:
         return invalid_email_exception(e)
-
-def email_setting(email:str, password:str, type:str = None, port:int = 587, debug:bool = False):
-    """
-    args:
-        email: email address
-        password: password
-        type: type of email server
-        port: port number
-    """
-    
-    mail_type = None
-    if type is None:
-        type = email.split('@')[1].split('.')[0]
-    
-    if type.lower() == 'g' or type.lower() == 'gmail':
-        mail_type = "smtp.gmail.com"
-    elif type.lower() == 'n' or type.lower() == 'naver':
-        mail_type = "smtp.naver.com"
-    elif type.lower() == 'm' or type.lower() == 'mailplug':
-        mail_type = "smtp.mailplug.co.kr"
-        port = 465
-    else:
-        raise Exception("Invalid email type. 'g' or 'gmail' for gmail, 'n' or 'naver' for naver, 'm' or 'mailplug' for mailplug")
-    
-    print_message(f"Email type: {mail_type}, port: {port}")
-    
-    # create SMTP session
-    smtp = smtplib.SMTP(mail_type, port)
-    if debug is True: smtp.set_debuglevel(1) # debug mode
-    
-    # smtp auth login
-    smtp.ehlo() # say Hello
-    if mail_type != "smtp.mailplug.co.kr":
-        smtp.starttls()
-    
-    return smtp
 
 def send_email(receiver, subject, content, *attachments):
     print(f"Send email to {receiver}")
@@ -83,7 +47,7 @@ def send_email(receiver, subject, content, *attachments):
     
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = IMEZY_CONFIG["email"]
+    msg['From'] = IMEZY_CONFIG["admin_email"]
     msg['To'] = receiver
     msg.attach(MIMEText(content, 'html')) if is_html else msg.attach(MIMEText(content, 'plain'))
     msg_string = msg.as_string()
@@ -93,21 +57,7 @@ def send_email(receiver, subject, content, *attachments):
     
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(mail_server, mail_port, context=context) as server:
-        server.login(IMEZY_CONFIG["email"], IMEZY_CONFIG["email_password"])
-        server.sendmail(IMEZY_CONFIG["email"], receiver, msg_string)
+        server.login(IMEZY_CONFIG["admin_email"], IMEZY_CONFIG["admin_email_password"])
+        server.sendmail(IMEZY_CONFIG["admin_email"], receiver, msg_string)
     
     return {"status": "success", "detail": "Email sent successfully"}
-
-from .config import settings
-email_env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html', 'xml']))
-class EmailSchema(BaseModel):
-    email: str
-    subject: str
-    body: str
-    html: Optional[bool] = False
-    
-class Email:
-    def __init__(self, username: str, url: str, email: List[EmailStr]):
-        self.user = user
-        self.url = url
-        self.email = email

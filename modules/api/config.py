@@ -12,17 +12,17 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_HOURS: int
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int
     
-    EMAIL_HOST: str
-    EMAIL_PORT: int
+    EMAIL_ADMIN_HOST: str
+    EMAIL_ADMIN_PORT: int
     EMAIL_USERNAME: str
-    EMAIL_PASSWORD: str
-    EMAIL_FROM: EmailStr
+    EMAIL_ADMIN_PASSWORD: str
+    EMAIL_ADMIN: EmailStr
     
     DEFAULT_CREDITS: int
     CREDITS_PER_IMAGE: int
     
     class Config:
-        env_file = ".env"
+        env_file = "/data/StableDiffusion/stable-diffusion-webui-test/modules/api/.env"
         env_file_encoding = "utf-8"
         
 settings = Settings()

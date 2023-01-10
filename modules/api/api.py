@@ -199,10 +199,6 @@ class Api:
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
-        self.add_api_route("/user/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
-        self.add_api_route("/user/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
-        
-        self.add_api_route("/email/send", self.send_email, methods=["POST"])
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
@@ -212,6 +208,11 @@ class Api:
         self.add_api_route("/image/search_compressed", self.search_image_compressed, methods=["GET"])
         self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
         self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
+        
+        self.add_api_route("/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
+        self.add_api_route("/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
+        self.add_api_route("/email/feedback/send", self.feedback_email_send, methods=["POST"]) # send feedback email
+        self.add_api_route("/email/send", self.send_email, methods=["POST"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -224,13 +225,12 @@ class Api:
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
+    
     def send_email(self, subject, body, to_email):
         env = Environment(
             loader=FileSystemLoader("."),
             autoescape=select_autoescape(["html", "xml"])
         )
-        
-        
         
     
     def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -388,6 +388,18 @@ class Api:
         return {"detail": f"Code is correct"}
         
         
+    def feedback_email_send(self, req: FeedbackEmailRequest, db: Session = Depends(get_db)):
+        print_message(f"Send feedback email: {req.email}")
+        
+        feedback_type = IMEZY_CONFIG['feedback_type'][str(req.feedback_type)]
+        subject = req.subject
+        content = f"User: {req.email}\nContent: {req.content}"
+        email = req.email
+        
+        api_utils.send_email(IMEZY_CONFIG['feedback_email'], subject, content)
+        
+        return {"detail": f"Sended feedback email to {IMEZY_CONFIG['feedback_email']}"}
+        
     
     def update_email(self, req: UpdateEmailRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
@@ -483,7 +495,6 @@ class Api:
     def read_user_info(self, user: dict = Depends(access_token_auth),
                          db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
-        #import setdefault dict
         
         try:
             user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
@@ -519,7 +530,6 @@ class Api:
     def login(self, form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
         print_message(f"Login attempt: {form_data.email}")
-        print(form_data.password)
         if (user_db := self.authenticate_user(form_data.email, form_data.password, db)) is False:
             raise exceptions.token_exception()
         
@@ -770,7 +780,7 @@ class Api:
             
         with open(f"generated/t2i/{auth['email']}/{now}.json", "w") as f:
             json.dump(response_json, f, indent=4)
-            
+        
         # 이미지 생성 데이터베이스 기록
         imezy_update_db = models.ImezyUpdateDB()
         imezy_update_db.email = auth['email']
@@ -790,7 +800,7 @@ class Api:
         response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
                                              credits=user_db.credits)
-                                           
+
         return response
 
     def img2imgapi(self, img2imgreq: StableDiffusionImg2ImgProcessingAPI):
@@ -1185,5 +1195,3 @@ class Api:
             return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
-        
-

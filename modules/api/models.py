@@ -337,6 +337,13 @@ class VerifyEmailRequest(BaseModel):
     email: str = Field(title="Email")
     code: str = Field(title="Code")
 
+class FeedbackEmailRequest(BaseModel):
+    type: int = Field(title="Type")
+    email: str = Field(title="Email")
+    subject: str = Field(title="Subject")
+    content: str = Field(title="Content")
+    
+
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
     SECRET_KEY_REFRESH = "secret_refresh"
