@@ -333,6 +333,7 @@ class Api:
             db.commit()
         else:
             verify_email_db.code = code
+            verify_email_db.updated = datetime.now()
             db.commit()        
         
         # subject = "Imezy 이메일 인증 코드"
@@ -345,7 +346,8 @@ class Api:
     
     def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Check code: {req.email}")
-        expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
+        # expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
+        expire_seconds = 30 # 30초 후 만료
         
         # db 불러오기
         if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
@@ -354,13 +356,16 @@ class Api:
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
         # 만료 여부 확인
-        if verify_email_db.updated + timedelta(seconds=expire_seconds) < datetime.now():
+        now = datetime.now().replace(microsecond=0)
+        total_sec = (now - verify_email_db.updated).total_seconds()
+        print_message(f"datetime.now: {now}, updated: {verify_email_db.updated}, total_seconds: {total_sec}")
+        if (datetime.now() - verify_email_db.updated).total_seconds() > expire_seconds:
             print_message(f"Code is expired")
-            return HTTPException(status_code=400, detail=f"Code is expired")
+            raise exceptions.code_exception_exception(0)
         # 코드 일치 여부 확인
         elif int(verify_email_db.code) != int(req.code):
             print_message(f"Code is not correct")
-            return HTTPException(status_code=404, detail=f"Code is not correct")
+            raise exceptions.code_exception_exception(1)
         
         verify_email_db.verified = True
         db.commit()
@@ -463,6 +468,7 @@ class Api:
     def read_user_info(self, user: dict = Depends(access_token_auth),
                          db: Session = Depends(get_db)):
         authenticated_access_token_check(user)
+        #import setdefault dict
         
         try:
             user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
@@ -471,11 +477,17 @@ class Api:
         
         del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
         
-        user_info['credits'] = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first().__dict__["credits"]
-        if (is_verified := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
+        
+        credits_db= db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first()
+        if credits_db is None:
+            user_info['credits'] = 0
+        else:
+            user_info['credits'] = credits_db.credits
+            
+        if (verified_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
             user_info['verified'] = False
         else:
-            user_info['verified'] = is_verified.__dict__["verified"]
+            user_info['verified'] = verified_db.verified
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
 
