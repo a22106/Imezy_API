@@ -43,3 +43,5 @@ modules/api/updateDB.sql
 logs/*
 test_smtp.ipynb
 generated/*
+conf/*
+modules/api/conf

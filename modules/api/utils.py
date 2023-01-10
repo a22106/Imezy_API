@@ -1,5 +1,4 @@
 import smtplib, ssl
-import json
 
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
@@ -9,35 +8,25 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .exceptions import invalid_email_exception
-from .logs import print_message
+# from .logs import print_message
 from .config import settings
-
-with open('/data/StableDiffusion/stable-diffusion-webui-test/modules/api/configs.json', 'r') as f:
-    IMEZY_CONFIG = json.load(f)
 
 def validate_email_address(email):
     try:
-        print_message(f"Email address is valid: {email}")
+        print(f"Email address is valid: {email}")
         return True    
     except EmailNotValidError as e:
         return invalid_email_exception(e)
 
-def send_email(receiver, subject, content, *attachments):
-    print(f"Send email to {receiver}")
+def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mail_port: int = None, mail_from:str = None, mail_pw: str = None, debug:bool = False, *attachments):
+    print(f"Send email to {mail_to}")
+    mail_host = settings.EMAIL_ADMIN_HOST if not mail_host else mail_host
+    mail_port = settings.EMAIL_ADMIN_PORT if not mail_port else mail_port
+    mail_from = settings.EMAIL_ADMIN if not mail_from else mail_from
+    mail_pw = settings.EMAIL_ADMIN_PW if not mail_pw else mail_pw
     
-    if not validate_email_address(receiver):
+    if not validate_email_address(mail_to):
         return invalid_email_exception()
-    
-    mail_domain = IMEZY_CONFIG["admin_email"].split('@')[1].split('.')[0]
-    mail_port = 587
-    if mail_domain == 'gmail':
-        mail_server = "smtp.gmail.com"
-        mail_port = 465
-    elif mail_domain == 'naver':
-        mail_server = "smtp.naver.com"
-    elif mail_domain == 'mailplug':
-        mail_server = "smtp.mailplug.co.kr"
-        
     
     is_html = False
     # check if content is html
@@ -47,17 +36,20 @@ def send_email(receiver, subject, content, *attachments):
     
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = IMEZY_CONFIG["admin_email"]
-    msg['To'] = receiver
+    msg['From'] = mail_from
+    msg['To'] = mail_to
     msg.attach(MIMEText(content, 'html')) if is_html else msg.attach(MIMEText(content, 'plain'))
     msg_string = msg.as_string()
     for att in attachments:
         msg.add_header('Content-Disposition', 'attachment', filename=att)
-    print_message(f"Send email to {receiver}")
+    print(f"Send email to {mail_to}")
     
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(mail_server, mail_port, context=context) as server:
-        server.login(IMEZY_CONFIG["admin_email"], IMEZY_CONFIG["admin_email_password"])
-        server.sendmail(IMEZY_CONFIG["admin_email"], receiver, msg_string)
+    with smtplib.SMTP_SSL(mail_host, mail_port, context=context) as server:
+        if debug: server.set_debuglevel(1) # debug mode
+        server.login(mail_from, mail_pw)
+        server.sendmail(from_addr=mail_from, 
+                        to_addrs= mail_to, 
+                        msg= msg_string)
     
     return {"status": "success", "detail": "Email sent successfully"}

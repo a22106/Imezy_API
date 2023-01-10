@@ -60,9 +60,9 @@ from . import utils as api_utils
 
 models.Base.metadata.create_all(bind=engine)
 
-DEFAULT_CREDITS = 500
-CREDITS_PER_IMAGE = 10
-with open('modules/api/configs.json', 'r') as f:
+DEFAULT_CREDITS = settings.DEFAULT_CREDITS                     
+CREDITS_PER_IMAGE = settings.CREDITS_PER_IMAGE
+with open('modules/api/conf/configs.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
 
 def upscaler_to_index(name: str):
