@@ -1,0 +1,5 @@
+23-01-09 21:46:34: Server start time: 
+23-01-09 21:46:34: 20230109_214634
+23-01-09 21:46:34: Send email to bk22106@gmail.com
+23-01-09 21:46:34: Email type: smtp.gmail.com, port: 587
+23-01-09 21:46:36: SMTP email login: bk22107@gmail.com
