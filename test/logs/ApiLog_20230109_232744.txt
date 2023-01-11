@@ -1,8 +1,0 @@
-23-01-09 23:27:44: Server start time: 
-23-01-09 23:27:44: 20230109_232744
-23-01-09 23:27:44: Email address is valid: bk22106@gmail.com
-23-01-09 23:27:44: Send email to bk22106@gmail.com
-23-01-09 23:29:03: Email address is valid: bk22106@gmail.com
-23-01-09 23:29:03: Send email to bk22106@gmail.com
-23-01-09 23:29:56: Email address is valid: bk22106@gmail.com
-23-01-09 23:29:56: Send email to bk22106@gmail.com

@@ -1,5 +1,0 @@
-23-01-09 23:21:49: Server start time: 
-23-01-09 23:21:49: 20230109_232149
-23-01-09 23:21:49: Email address is valid: bk22106@gmail.com
-23-01-09 23:21:49: Email type: smtp.gmail.com, port: 587
-23-01-09 23:21:51: Send email to bk22106@gmail.com

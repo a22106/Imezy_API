@@ -1,3 +1,0 @@
-23-01-09 23:13:56: Server start time: 
-23-01-09 23:13:56: 20230109_231356
-23-01-09 23:13:56: Email type: smtp.gmail.com, port: 587
