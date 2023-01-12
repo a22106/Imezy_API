@@ -51,7 +51,7 @@ import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 
 from .database import engine, get_db
-from . import models, credits
+from . import models, credits, styles
 from .users import *
 from .auth import *
 from .logs import print_message
@@ -209,10 +209,15 @@ class Api:
         self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
         self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
         
-        self.add_api_route("/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
-        self.add_api_route("/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
+        self.add_api_route("/email/verification/send", self.email_verification_send, methods=["POST"]) # send verification code
+        self.add_api_route("/email/verification/check", self.email_verification_check, methods=["PUT"]) # check verification code
         self.add_api_route("/email/feedback/send", self.feedback_email_send, methods=["POST"]) # send feedback email
         self.add_api_route("/email/send", self.send_email, methods=["POST"])
+        
+        self.add_api_route("/style/modifier", self.modifiers_read, methods=["GET"])
+        self.add_api_route("/style/modifier/{modifier}", self.modifiers_read, methods=["GET"])
+        # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
+        # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
         
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
@@ -226,13 +231,10 @@ class Api:
     #     return {"response_codes": Responses.res_codes}
     
     
-    def send_email(self, subject, body, to_email):
-        env = Environment(
-            loader=FileSystemLoader("."),
-            autoescape=select_autoescape(["html", "xml"])
-        )
-        
-    
+    def send_email(self, email: EmailSendRequest, db: Session = Depends(get_db)):
+        print_message(f"Send email to {email.email}")
+        api_utils.send_email(email.email, email.subject, email.content, attachments=email.attachments)
+
     def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message("search_image", auth)
@@ -334,13 +336,15 @@ class Api:
         if data["images"]:
             return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
         
-    def verify_email_send_code(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def email_verification_send(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message(f"Verify email: {auth['email']} create code")
         
         from random import randint
         code = randint(100000, 999999)
 
+        username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username
+        
         if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
             verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
         
@@ -353,16 +357,19 @@ class Api:
         
         # subject = "Imezy 이메일 인증 코드"
         subject = "Imezy Email Verification Code"
-        content = f"Your verification code is {code}\n Copy and paste the code into the verification code field."
+        with open(settings.VERIFICATION_MAIL_HTML_PATH, "r") as f:
+            content = f.read()\
+                .replace("{{code}}", str(code))\
+                .replace("{{username}}", username)\
+                .replace("{{logo}}", settings.IMEZY_LOGO_250)
         
         api_utils.send_email(auth["email"], subject, content)
         
         return {"detail": f"Sended 6-digits code to {auth['email']}"}
     
-    def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
+    def email_verification_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
         print_message(f"Check code: {req.email}")
-        # expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
-        expire_seconds = 30 # 30초 후 만료
+        expire_seconds = 60 * 5 # 5분
         
         # db 불러오기
         if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
@@ -615,13 +622,16 @@ class Api:
             raise exceptions.get_user_exception()
         if auth["email"] != user.email:
             raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
+        print_message(f"Updating password for user: {user.email}")
         
         if user.new_password != user.confirm_password:
             raise HTTPException(status_code=400, detail="New password and confirm password do not match")
         elif not update_password(db, user): # update_password returns True if password was updated. it updates the password it self
             raise HTTPException(status_code=400, detail="Incorrect old password")
         
-        return UpdatePasswordResponse(info="Password updated successfully")
+        info = f"Password updated successfully for user: {user.email}"
+        print_message(info)
+        return UpdatePasswordResponse(info=info)
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
@@ -1194,3 +1204,17 @@ class Api:
             return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
+    
+    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = None):
+        '''
+        modifier starts from 1
+        modifier: None - return all modifier categories
+        modifier: 0 - return all modifiers
+        modifier: 1, ..., n - return all modifiers in category n
+        '''
+        modifier_len = len(db.query(models.ModifiersClassDB).all())
+        if (type(modifier) is not int) or (modifier < 0 or modifier > modifier_len):
+            raise HTTPException(status_code=400, detail=f"Invalid modifier id, must be an integer(0 <= id <= {modifier_len}).  0 - return all modifiers. 1, ..., n - return all modifiers in category n")
+        response = styles.read_modifier(db, modifier)
+        
+        return response

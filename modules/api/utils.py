@@ -26,7 +26,8 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     mail_pw = settings.EMAIL_ADMIN_PW if not mail_pw else mail_pw
     
     if not validate_email_address(mail_to):
-        return invalid_email_exception()
+        print(f"Email address is invalid: {mail_to}")
+        raise invalid_email_exception()
     
     is_html = False
     # check if content is html

@@ -332,8 +332,12 @@ class UpdateCreditsResponse(BaseModel):
     
 class DownloadImageRequest(BaseModel):
     index: int = Field(title="Image Index")    
-    
-class VerifyEmailRequest(BaseModel):
+
+class EmailVerificaionSendRequest(BaseModel):
+    email: str = Field(title="Email")
+    expire_seconds: int = Field("60 * 10", title="Expire Seconds")
+
+class EmailVerificationCheckRequest(BaseModel):
     email: str = Field(title="Email")
     code: str = Field(title="Code")
 
@@ -342,7 +346,18 @@ class FeedbackEmailRequest(BaseModel):
     email: str = Field(title="Email")
     subject: str = Field(title="Subject")
     content: str = Field(title="Content")
+
+class EmailSendRequest(BaseModel):
+    email: str = Field(title="Email")
+    subject: str = Field(title="Subject")
+    content: str = Field(title="Content")
+    attachments: Optional[List[str]] = Field(title="Attachments")
     
+class ModifierCreateRequest(BaseModel):
+    modifier: str = Field(title="Modifier class")
+    category: str = Field(title="Category")
+    prompt: str = Field(title="Prompt")
+    prompt_korean: Optional[str] = Field(title="Prompt Korean")
 
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
@@ -413,3 +428,19 @@ class VerifyEmailDB(Base):
     code = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.now)
     verified = Column(Boolean, default=False)
+
+class ModifiersDB(Base):
+    __tablename__ = "modifiers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    modifier = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    prompt = Column(String, nullable=False)
+    prompt_korean = Column(String)
+    
+
+class ModifiersClassDB(Base):
+    __tablename__ = "modifiers_class"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    modifier = Column(String, nullable=False)

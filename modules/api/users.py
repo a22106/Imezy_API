@@ -45,8 +45,6 @@ def update_user(db: Session, user_id, user):
     """
     user_updating = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first()
 
-    
-    
     for attr in user.__dict__.keys():
         if getattr(user, attr) != None:
             print(f"{attr}: {getattr(user, attr)}")
