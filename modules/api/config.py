@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     IMEZY_DB_USER: str
     IMEZY_DB_SERVER: str
     IMEZY_DB_PORT: int
-    IMEZY_LOGO_250: str
     IMEZY_LOGO_140: str
+    IMEZY_LOGO_250: str
     IMEZY_LOGO_IMEZY: str
 
     

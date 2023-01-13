@@ -211,6 +211,7 @@ class Api:
         
         self.add_api_route("/email/verification/send", self.email_verification_send, methods=["POST"]) # send verification code
         self.add_api_route("/email/verification/check", self.email_verification_check, methods=["PUT"]) # check verification code
+        self.add_api_route("/email/verification/change", self.email_verification_change_check, methods=["GET"]) # resend verification code
         self.add_api_route("/email/feedback/send", self.feedback_email_send, methods=["POST"]) # send feedback email
         self.add_api_route("/email/send", self.send_email, methods=["POST"])
         
@@ -336,44 +337,59 @@ class Api:
         if data["images"]:
             return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
         
-    def email_verification_send(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def email_verification_send(self, req: EmailVerificaionSendRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message(f"Verify email: {auth['email']} create code")
-        
+        print(req.email_to)
         from random import randint
         code = randint(100000, 999999)
 
-        username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username
-        
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
-            verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
-        
+        if req.email_to != "": # 특정 이메일로 보내는 경우
+            email_to = req.email_to
+            email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username            
+            verify_email_db = models.VerifyEmailChangeDB(email_from=auth["email"], email_to=email_to, code=code)
             db.add(verify_email_db)
             db.commit()
-        else:
-            verify_email_db.code = code
-            verify_email_db.updated = datetime.now()
-            db.commit()
+        else: # 자신의 이메일로 보내는 경우
+            email_to = auth["email"]
+            email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == email_to).first().username
+            if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None: # 인증코드가 발급되지 않은 경우
+                verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
+            
+                db.add(verify_email_db)
+                db.commit()
+            else: # 이미 인증코드가 발급된 경우
+                verify_email_db.code = code
+                verify_email_db.updated = datetime.now()
+                db.commit()
         
         # subject = "Imezy 이메일 인증 코드"
         subject = "Imezy Email Verification Code"
         with open(settings.VERIFICATION_MAIL_HTML_PATH, "r") as f:
             content = f.read()\
                 .replace("{{code}}", str(code))\
-                .replace("{{username}}", username)\
+                .replace("{{username}}", email_to_username)\
                 .replace("{{logo}}", settings.IMEZY_LOGO_250)
         
-        api_utils.send_email(auth["email"], subject, content)
+        result = api_utils.send_email(email_to, subject, content)
+        print_message(result["detail"])
+        if result["status"] == "success":
+            return result
+        elif result["status"] == "fail":
+            db.delete(verify_email_db)
+            db.commit()
+            raise HTTPException(status_code=500, detail=result["detail"])    
+            
         
-        return {"detail": f"Sended 6-digits code to {auth['email']}"}
+        return {"detail": f"Sended 6-digits code to {email_to}"}
     
     def email_verification_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
-        print_message(f"Check code: {req.email}")
-        expire_seconds = 60 * 5 # 5분
+        print_message(f"Check code: {req.email_to}")
+        expire_seconds = req.expires
         
         # db 불러오기
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
-            return HTTPException(status_code=404, detail=f"User {req.email} is not exist")
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email_to).first()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email_to} is not exist")
         
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
@@ -393,6 +409,30 @@ class Api:
         db.commit()
         
         return {"detail": f"Code is correct"}
+    
+    def email_verification_change_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
+        print_message(f"Check code: {req.email_to}")
+        expire_seconds = req.expires
+        
+        # db 불러오기
+        if (result := db.query(models.VerifyEmailChangeDB).filter(models.VerifyEmailChangeDB.email_to == req.email_to).all()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email_to} is not exist")
+        verify_email_db = result[-1]
+        print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}")
+        
+        # 만료 여부 확인
+        now = datetime.now().replace(microsecond=0)
+        total_sec = (now - verify_email_db.updated).total_seconds()
+        print_message(f"datetime.now: {now}, updated: {verify_email_db.updated}, total_seconds: {total_sec}")
+        if (datetime.now() - verify_email_db.updated).total_seconds() > expire_seconds:
+            print_message(f"Code is expired")
+            raise exceptions.code_exception_exception(0)
+        # 코드 일치 여부 확인
+        elif int(verify_email_db.code) != int(req.code):
+            print_message(f"Code is not correct")
+            raise exceptions.code_exception_exception(1)
+        
+        return {"status": "success", "detail": f"Code is correct"}
         
     def feedback_email_send(self, req: FeedbackEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Send feedback email: {req.email}")

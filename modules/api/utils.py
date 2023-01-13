@@ -46,11 +46,15 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     print(f"Send email to {mail_to}")
     
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(mail_host, mail_port, context=context) as server:
-        if debug: server.set_debuglevel(1) # debug mode
-        server.login(mail_from, mail_pw)
-        server.sendmail(from_addr=mail_from, 
-                        to_addrs= mail_to, 
-                        msg= msg_string)
+    try:
+        with smtplib.SMTP_SSL(mail_host, mail_port, context=context) as server:
+            if debug: server.set_debuglevel(1) # debug mode
+            server.login(mail_from, mail_pw)
+            server.sendmail(from_addr=mail_from, 
+                            to_addrs= mail_to, 
+                            msg= msg_string)
+    except smtplib.SMTPRecipientsRefused as e:
+        print(f"SMTPRecipientsRefused: {e}")
+        return {"status": "fail", "detail": f"SMTPRecipientsRefused: {e}"}
     
     return {"status": "success", "detail": "Email sent successfully"}

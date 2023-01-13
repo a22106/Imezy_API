@@ -12,6 +12,8 @@ from .database import Base, SessionLocal, engine
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
 from sqlalchemy.orm import relationship
 
+from .config import settings
+
 API_NOT_ALLOWED = [
     "self",
     "kwargs",
@@ -334,12 +336,13 @@ class DownloadImageRequest(BaseModel):
     index: int = Field(title="Image Index")    
 
 class EmailVerificaionSendRequest(BaseModel):
-    email: str = Field(title="Email")
-    expire_seconds: int = Field("60 * 10", title="Expire Seconds")
+    email_to: Optional[str] = Field(title="Email To", description="Email to send verification code to", default=None)
 
 class EmailVerificationCheckRequest(BaseModel):
-    email: str = Field(title="Email")
+    email_to: str = Field(title="Email")
     code: str = Field(title="Code")
+    expires: int = Field(title="Expires", description="Time in seconds until the code expires", default=settings.VERIFICATION_EXPIRE_SECONDS) # 5 minutes
+
 
 class FeedbackEmailRequest(BaseModel):
     type: int = Field(title="Type")
@@ -428,6 +431,15 @@ class VerifyEmailDB(Base):
     code = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.now)
     verified = Column(Boolean, default=False)
+
+class VerifyEmailChangeDB(Base):
+    __tablename__ = "verify_email_change"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email_from = Column(String, ForeignKey("users.email"))
+    email_to = Column(String, ForeignKey("users.email"))
+    code = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
 
 class ModifiersDB(Base):
     __tablename__ = "modifiers"
