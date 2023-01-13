@@ -15,7 +15,7 @@ def read_modifier(db, mod: int = 0):
             else: return modifier with id
     """
     
-    if mod is None:
+    if mod == -1:
         modifier_catetory = db.query(models.ModifiersClassDB).all()
         return modifier_catetory
         

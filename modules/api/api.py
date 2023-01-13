@@ -43,7 +43,7 @@ from PIL import PngImagePlugin,Image
 from modules.sd_models import checkpoints_list, find_checkpoint_config
 from modules.realesrgan_model import get_realesrgan_models
 from modules import devices
-from typing import List
+from typing import List, Union
 
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -1205,7 +1205,7 @@ class Api:
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
     
-    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = None):
+    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = -1):
         '''
         modifier starts from 1
         modifier: None - return all modifier categories
@@ -1213,7 +1213,7 @@ class Api:
         modifier: 1, ..., n - return all modifiers in category n
         '''
         modifier_len = len(db.query(models.ModifiersClassDB).all())
-        if (type(modifier) is not int) or (modifier < 0 or modifier > modifier_len):
+        if (type(modifier) is not int) or (modifier < -1 or modifier > modifier_len):
             raise HTTPException(status_code=400, detail=f"Invalid modifier id, must be an integer(0 <= id <= {modifier_len}).  0 - return all modifiers. 1, ..., n - return all modifiers in category n")
         response = styles.read_modifier(db, modifier)
         
