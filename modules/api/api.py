@@ -211,7 +211,7 @@ class Api:
         
         self.add_api_route("/email/verification/send", self.email_verification_send, methods=["POST"]) # send verification code
         self.add_api_route("/email/verification/check", self.email_verification_check, methods=["PUT"]) # check verification code
-        self.add_api_route("/email/verification/change", self.email_verification_change_check, methods=["GET"]) # resend verification code
+        self.add_api_route("/email/verification/change", self.email_verification_change_check, methods=["POST"]) # resend verification code
         self.add_api_route("/email/feedback/send", self.feedback_email_send, methods=["POST"]) # send feedback email
         self.add_api_route("/email/send", self.send_email, methods=["POST"])
         
