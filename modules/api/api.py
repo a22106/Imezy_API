@@ -1205,16 +1205,20 @@ class Api:
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
     
-    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = -1):
+    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = None):
         '''
         modifier starts from 1
         modifier: None - return all modifier categories
         modifier: 0 - return all modifiers
         modifier: 1, ..., n - return all modifiers in category n
         '''
+        print_message(f"Reading modifiers. modifier: {modifier}")
         modifier_len = len(db.query(models.ModifiersClassDB).all())
-        if (type(modifier) is not int) or (modifier < -1 or modifier > modifier_len):
+        if modifier == None:
+            response = styles.read_modifier(db)
+            return response
+        elif (type(modifier) is not int) or (modifier < -1 or modifier > modifier_len):
             raise HTTPException(status_code=400, detail=f"Invalid modifier id, must be an integer(0 <= id <= {modifier_len}).  0 - return all modifiers. 1, ..., n - return all modifiers in category n")
         response = styles.read_modifier(db, modifier)
-        
+    
         return response

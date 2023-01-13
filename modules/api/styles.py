@@ -4,7 +4,7 @@ from . import models
 from .config import settings
 
 
-def read_modifier(db, mod: int = 0):
+def read_modifier(db, mod: int = None):
     """
     Read modifier from database
     args:
@@ -15,7 +15,7 @@ def read_modifier(db, mod: int = 0):
             else: return modifier with id
     """
     
-    if mod == -1:
+    if mod == None:
         modifier_catetory = db.query(models.ModifiersClassDB).all()
         return modifier_catetory
         
