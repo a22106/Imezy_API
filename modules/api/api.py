@@ -682,10 +682,10 @@ class Api:
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
         if is_exist[0]:
             print_message(f"The username '{create_user.username}' is already in use")
-            raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use")
+            raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use. username")
         elif is_exist[1]:
             print_message(f"The email {create_user.email} is already in use")
-            raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use")
+            raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use. email")
         
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
