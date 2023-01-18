@@ -209,7 +209,6 @@ class Api:
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
         
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
-        # self.add_api_route("/payment/orderNames/{item_id}", self.get_order_names, methods=["GET"])
         self.add_api_route("/payment/order_id/generate/{order_name}", self.generate_order_id, methods=["GET"])
         
         self.add_api_route("/payment/toss/confirm", self.toss_confirm, methods=["POST"])
