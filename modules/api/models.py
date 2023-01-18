@@ -9,7 +9,7 @@ from typing import Dict, List
 from datetime import datetime, timedelta
 
 from .database import Base, SessionLocal, engine
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
 
 from .config import settings
@@ -362,10 +362,11 @@ class ModifierCreateRequest(BaseModel):
     prompt: str = Field(title="Prompt")
     prompt_korean: Optional[str] = Field(title="Prompt Korean")
 
-class TossRequest(BaseModel):
+class TossConfirmRequest(BaseModel):
     payment_key:str = Field(title="Payment Key")
     order_id:str = Field(title="Order ID")
     amount:int = Field(title="Amount")
+    # payments_res: str = Field(title="Payments Res")
     
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
@@ -461,3 +462,10 @@ class ModifiersClassDB(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     modifier = Column(String, nullable=False)
+    
+class OrderNamesDB(Base):
+    __tablename__ = "order_names"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    price = Column(Integer, nullable=False)

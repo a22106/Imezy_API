@@ -1,4 +1,6 @@
 import smtplib, ssl
+import random
+import string
 
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
@@ -62,20 +64,40 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     
     return {"status": "success", "detail": "Email sent successfully"}
 
-def toss_request(toss_request: TossRequest, db: Session):
+def toss_confirm(toss_request: TossConfirmRequest):
 
     conn = http.client.HTTPSConnection("api.tosspayments.com")
 
-    payload = rf"{{'paymentKey':{toss_request.payment_key},'amount':{toss_request.amount},'orderId':{toss_request.order_id}}}"
+    payload = f"{{\"paymentKey\":\"{toss_request.payment_key}\",\"amount\":\"{toss_request.amount}\",\"orderId\":\"{toss_request.order_id}\"}}"
 
     headers = {
-        'Authorization': "Basic dGVzdF9za196WExrS0V5cE5BcldtbzUwblgzbG1lYXhZRzVSOg==",
+        'Authorization': "Basic dGVzdF9za19rNmJKWG1nbzI4ZWdHbDFiTUU2VkxBbkdLV3g0Og==",
         'Content-Type': "application/json"
         }
 
+    print(f"headers: {headers}")
+    print(f"payload: {payload}")
+    
     conn.request("POST", "/v1/payments/confirm", payload, headers)
 
     res = conn.getresponse()
     data = res.read()
-
+    
+    print(conn.request("POST", "/v1/payments/confirm", payload, headers))
+    print(conn.getresponse().status)
     print(data.decode("utf-8"))
+    
+    return data.decode("utf-8")
+
+def get_items(item_id: int = None, db: Session = None):
+    if item_id:
+        return db.query(OrderNamesDB).filter(OrderNamesDB.id == item_id).first()
+    else:
+        return db.query(OrderNamesDB).all()
+
+def get_random_string(length):
+    # With combination of lower and upper case
+    result_str = ''.join(random.choice(string.ascii_letters) for i in range(length))
+    # print random string
+    print(result_str)
+    return result_str

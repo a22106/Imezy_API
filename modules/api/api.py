@@ -208,21 +208,25 @@ class Api:
         # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
         
-        self.add_api_route("/toss/fail", self.toss_fail, methods=["POST"])
+        self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
+        # self.add_api_route("/payment/orderNames/{item_id}", self.get_order_names, methods=["GET"])
+        self.add_api_route("/payment/order_id/generate/{order_name}", self.generate_order_id, methods=["GET"])
         
-        @self.app.exception_handler(AuthJWTException)
-        def authjwt_exception_handler(request: Request, exc: AuthJWTException):
-            return JSONResponse(
-                status_code=exc.status_code,
-                content={"detail": exc.message},
-            )
-        # self.add_api_route("/extra/res_codes", self.get_res_codes, methods=["GET"])
+        self.add_api_route("/payment/toss/confirm", self.toss_confirm, methods=["POST"])
         
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
-    def toss_fail(self):
-        return {"toss_fail": "toss_fail"}
+    def get_order_names(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db =  db)
+    
+    def generate_order_id(self, order_name: str, db: Session = Depends(get_db)):
+        order_id = f"imezy_{order_name}_{api_utils.get_random_string(16)}"
+        return {"order_id": order_id}
+    
+    def toss_confirm(self, req: TossConfirmRequest):
+        print_message(f"toss_confirm request: {req}")
+        return json.loads( api_utils.toss_confirm(req))
     
     def send_email(self, email: EmailSendRequest, db: Session = Depends(get_db)):
         print_message(f"Send email to {email.email}")
@@ -831,12 +835,12 @@ class Api:
         db.add(imezy_update_db)
 
         # 크레딧 업데이트
-        updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
-        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == -1:
+        updateing_credit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
+        if credits.update_cred(user_db.email, updateing_credit_inc, db) == -1:
             print_message(f"{auth['email']}'s update_cred failed")
             raise exceptions.get_user_exception()
         
-        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_credit_inc}, generated images: {created_images_num}")
         
         response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
