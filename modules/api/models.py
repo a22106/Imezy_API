@@ -362,6 +362,11 @@ class ModifierCreateRequest(BaseModel):
     prompt: str = Field(title="Prompt")
     prompt_korean: Optional[str] = Field(title="Prompt Korean")
 
+class TossRequest(BaseModel):
+    payment_key:str = Field(title="Payment Key")
+    order_id:str = Field(title="Order ID")
+    amount:int = Field(title="Amount")
+    
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
     SECRET_KEY_REFRESH = "secret_refresh"

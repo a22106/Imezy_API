@@ -8,6 +8,7 @@ from modules.api import models
 from dataclasses import dataclass
 
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 # auth
 from passlib.context import CryptContext
@@ -16,15 +17,14 @@ from jose import JWTError, jwt, ExpiredSignatureError
 from . import exceptions
 from .logs import print_message
 from .database import get_db
-from sqlalchemy.orm import Session
+from .config import settings
 
 
-SECRET_KEY_ACCESS = "secret_api_key"
-SECRET_KEY_REFRESH = "secret_refresh"
+SECRET_KEY_ACCESS = settings.JWT_ACCESS_KEY
+SECRET_KEY_REFRESH = settings.JWT_REFRESH_KEY
 ALGORITHM_ACCESS = "HS256"
-ALGORITHM_REFRESH = "HS384"
-ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(minutes=120)
-REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
+ACCESS_TOKEN_EXPIRES = timedelta(hours=2)
+REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
@@ -56,7 +56,7 @@ def access_token_auth(token: str = Depends(oauth2_bearer)):
 def refresh_token_auth(token: str = Depends(oauth2_bearer)):
     try:
         # if access token is expired, it will raise JWTError
-        payload = jwt.decode(token, SECRET_KEY_REFRESH, algorithms=[ALGORITHM_REFRESH])
+        payload = jwt.decode(token, SECRET_KEY_REFRESH, algorithms=[ALGORITHM_ACCESS])
         token
         db = next(get_db())
         
@@ -86,7 +86,7 @@ def refresh_token_auth(token: str = Depends(oauth2_bearer)):
         raise exceptions.refresh_token_expired_exception()
     
 def create_access_token(email: str, user_id: int, verified: bool = False,
-                    expires_delta: Optional[timedelta] = ACCESS_TOKEN_EXPIRES_MINUTES):
+                    expires_delta: Optional[timedelta] = ACCESS_TOKEN_EXPIRES):
     to_encode = {"email": email, "user_id": user_id, "verified": verified}
     expire = datetime.utcnow() + expires_delta
         
@@ -97,12 +97,12 @@ def create_access_token(email: str, user_id: int, verified: bool = False,
 
 # refresh token expires in 1 months
 def create_refresh_token(email: str, user_id: int,
-                    expires_delta: Optional[timedelta] = REFRESH_TOKEN_EXPIRES_MINUTES):
+                    expires_delta: Optional[timedelta] = REFRESH_TOKEN_EXPIRES):
     to_encode = {"email": email, "user_id": user_id}
     expire = datetime.utcnow() + expires_delta
     
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_REFRESH, algorithm=ALGORITHM_REFRESH)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY_REFRESH, algorithm=ALGORITHM_ACCESS)
     
     return encoded_jwt
 

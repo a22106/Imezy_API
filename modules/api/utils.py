@@ -6,10 +6,13 @@ from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoad
 from email_validator import validate_email, EmailNotValidError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sqlalchemy.orm import Session
+import http.client
 
 from .exceptions import invalid_email_exception
 # from .logs import print_message
 from .config import settings
+from .models import *
 
 def validate_email_address(email):
     try:
@@ -58,3 +61,21 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
         return {"status": "fail", "detail": f"SMTPRecipientsRefused: {e}"}
     
     return {"status": "success", "detail": "Email sent successfully"}
+
+def toss_request(toss_request: TossRequest, db: Session):
+
+    conn = http.client.HTTPSConnection("api.tosspayments.com")
+
+    payload = rf"{{'paymentKey':{toss_request.payment_key},'amount':{toss_request.amount},'orderId':{toss_request.order_id}}}"
+
+    headers = {
+        'Authorization': "Basic dGVzdF9za196WExrS0V5cE5BcldtbzUwblgzbG1lYXhZRzVSOg==",
+        'Content-Type': "application/json"
+        }
+
+    conn.request("POST", "/v1/payments/confirm", payload, headers)
+
+    res = conn.getresponse()
+    data = res.read()
+
+    print(data.decode("utf-8"))

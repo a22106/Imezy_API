@@ -1,15 +1,3 @@
-''' 할 일
-
-- [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
-- [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
-- [v] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
-- [v] 4. 생성된 사진 용량 줄여서 저장하기
-- [v] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
-- [v] 6. 이메일 인증 기능 추가하기
-- [v] 7. jwt에 이메일 인증 여부 내용 추가하기
-
-'''
-
 import base64
 import io, os
 import time
@@ -220,6 +208,8 @@ class Api:
         # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
         
+        self.add_api_route("/toss/fail", self.toss_fail, methods=["POST"])
+        
         @self.app.exception_handler(AuthJWTException)
         def authjwt_exception_handler(request: Request, exc: AuthJWTException):
             return JSONResponse(
@@ -231,6 +221,8 @@ class Api:
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
+    def toss_fail(self):
+        return {"toss_fail": "toss_fail"}
     
     def send_email(self, email: EmailSendRequest, db: Session = Depends(get_db)):
         print_message(f"Send email to {email.email}")
@@ -682,10 +674,10 @@ class Api:
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
         if is_exist[0]:
             print_message(f"The username '{create_user.username}' is already in use")
-            raise HTTPException(status_code=400, detail=f"username")
+            raise HTTPException(status_code=400, detail=f"username", headers={"username": create_user.username})
         elif is_exist[1]:
             print_message(f"The email {create_user.email} is already in use")
-            raise HTTPException(status_code=400, detail=f"email")
+            raise HTTPException(status_code=400, detail=f"email", headers={"email": create_user.email})
         
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
