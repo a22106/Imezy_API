@@ -469,3 +469,4 @@ class OrderNamesDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_name = Column(String, nullable=False)
     price = Column(Integer, nullable=False)
+    order_class = Column(String, nullable=False)

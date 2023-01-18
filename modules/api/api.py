@@ -221,6 +221,7 @@ class Api:
     
     def generate_order_id(self, order_name: str, db: Session = Depends(get_db)):
         order_id = f"imezy_{order_name}_{api_utils.get_random_string(16)}"
+        print_message(f"order_id: {order_id}")
         return {"order_id": order_id}
     
     def toss_confirm(self, req: TossConfirmRequest):
