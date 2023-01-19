@@ -34,3 +34,9 @@ psutil
 email-validator
 py3DNS
 clip
+
+fastapi_jwt_auth
+fastapi_mail
+pydantic[dotenv]
+pymysql
+python-jose

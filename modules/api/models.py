@@ -395,7 +395,7 @@ class CreditsDB(Base):
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
-    last_updated = Column(DateTime, default=datetime.now)
+    updated = Column(DateTime, default=datetime.now)
     email = Column(String, ForeignKey("users.email"))
     
 class UsersAdminDB(Base):
@@ -463,10 +463,41 @@ class ModifiersClassDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     modifier = Column(String, nullable=False)
     
-class OrderNamesDB(Base):
-    __tablename__ = "order_names"
+class OrderclassesDB(Base):
+    __tablename__ = "order_classes"
     
     id = Column(Integer, primary_key=True, index=True)
     order_name = Column(String, nullable=False)
-    price = Column(Integer, nullable=False)
+    amount = Column(Integer, nullable=False)
     order_class = Column(String, nullable=False)
+    credits = Column(Integer, nullable=False)
+    
+class OrderNamesCreditsDB(Base):
+    __tablename__ = "order_names_credits"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    credits = Column(Integer, nullable=False)
+    order_class = Column(String, ForeignKey("order_classes.order_class"))
+    
+class OrderNamesSubsDB(Base):
+    __tablename__ = "order_names_subs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    credits = Column(Integer, nullable=False)
+    order_class = Column(String, ForeignKey("order_classes.order_class"))
+    
+class PaymentHistoryDB(Base):
+    __tablename__ = "payment_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    order_id = Column(String, nullable=False)
+    order_name = Column(String, nullable=False)
+    payment_key = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+    response = Column(JSON, nullable=False)

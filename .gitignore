@@ -45,3 +45,4 @@ test_smtp.ipynb
 generated/*
 conf/*
 modules/api/conf
+/wget-log*

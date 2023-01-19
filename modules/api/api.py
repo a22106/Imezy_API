@@ -50,7 +50,7 @@ models.Base.metadata.create_all(bind=engine)
 
 DEFAULT_CREDITS = settings.DEFAULT_CREDITS                     
 CREDITS_PER_IMAGE = settings.CREDITS_PER_IMAGE
-with open('modules/api/conf/configs.json', 'r') as f:
+with open('./modules/api/configs.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
 
 def upscaler_to_index(name: str):
@@ -209,24 +209,36 @@ class Api:
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
         
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
+        self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
+        self.add_api_route("/payment/orderNames/subs", self.get_order_names_subs, methods=["GET"])
+        self.add_api_route("/payment/history/{email}", self.get_payment_history, methods=["GET"])
         self.add_api_route("/payment/order_id/generate/{order_name}", self.generate_order_id, methods=["GET"])
-        
         self.add_api_route("/payment/toss/confirm", self.toss_confirm, methods=["POST"])
         
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
     def get_order_names(self, item_id: int = None, db: Session = Depends(get_db)):
-        return api_utils.get_items(item_id,db =  db)
+        return api_utils.get_items(item_id,db = db)
     
-    def generate_order_id(self, order_name: str, db: Session = Depends(get_db)):
-        order_id = f"imezy_{order_name}_{api_utils.get_random_string(16)}"
+    def get_order_names_credits(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db = db, payment_class="credits")
+    
+    def get_order_names_subs(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db = db, payment_class="subs")
+    
+    def generate_order_id(self, order_name: str):
+        # order_id = f"imezy_{order_name}_{api_utils.get_random_string(16)}"
+        order_id = api_utils.generate_order_id(order_name)
         print_message(f"order_id: {order_id}")
         return {"order_id": order_id}
     
-    def toss_confirm(self, req: TossConfirmRequest):
+    def get_payment_history(self, email: str, db: Session = Depends(get_db)):
+        return api_utils.get_payment_history(email, db = db)
+    
+    def toss_confirm(self, req: TossConfirmRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
         print_message(f"toss_confirm request: {req}")
-        return json.loads( api_utils.toss_confirm(req))
+        return api_utils.toss_confirm(req, db = db, email = auth['email'])
     
     def send_email(self, email: EmailSendRequest, db: Session = Depends(get_db)):
         print_message(f"Send email to {email.email}")
@@ -583,8 +595,8 @@ class Api:
         
         access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
         refresh_token = create_refresh_token(email=user_db.email, user_id=user_db.id)
-        
         former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
+        
         # check if user has a refresh token is outdated
         if not former_rtoken:
             new_rtoken = models.RefreshTokenDB()
@@ -1225,19 +1237,19 @@ class Api:
         return credits.read_creds(db, user_email)
     
     
-    def update_cred(self, request: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def update_cred(self, req: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         if auth['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=auth)
-        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {request.credits_inc}, target user email: {request.email}")
+        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {req.credits_inc}, target user email: {req.email}")
         
-        request = request.dict()
+        req = req.dict()
         user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == auth.get("email", None)).first()
         
         # if the user is not admin, he can only update his own credits
-        if user_admin_db != None or request['email'] == auth['email']:
+        if user_admin_db != None or req['email'] == auth['email']:
             print_message("User is admin or updating his own credits")
-            current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
-            return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
+            current_credits = credits.update_cred(req["email"], req["credits_inc"], db)
+            return UpdateCreditsResponse(info = "Credits updated", email=req['email'], credits_inc=req['credits_inc'], currunt_credits=current_credits)
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
     
