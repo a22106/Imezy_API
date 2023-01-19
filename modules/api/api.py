@@ -211,7 +211,8 @@ class Api:
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
         self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
         self.add_api_route("/payment/orderNames/subs", self.get_order_names_subs, methods=["GET"])
-        self.add_api_route("/payment/history/{email}", self.get_payment_history, methods=["GET"])
+        self.add_api_route("/payment/history", self.get_payment_history, methods=["GET"])
+        self.add_api_route("/payment/history/{email}", self.get_payment_history_email, methods=["GET"])
         self.add_api_route("/payment/order_id/generate/{order_name}", self.generate_order_id, methods=["GET"])
         self.add_api_route("/payment/toss/confirm", self.toss_confirm, methods=["POST"])
         
@@ -233,7 +234,15 @@ class Api:
         print_message(f"order_id: {order_id}")
         return {"order_id": order_id}
     
-    def get_payment_history(self, email: str, db: Session = Depends(get_db)):
+    def get_payment_history(self, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
+        print_message("get_payment_history", auth["email"])
+        email = auth['email']
+        
+        return api_utils.get_payment_history(email, db = db)
+    
+    def get_payment_history_email(self, email: str, db: Session = Depends(get_db)):
+        print_message("get_payment_history_email", email)
+        
         return api_utils.get_payment_history(email, db = db)
     
     def toss_confirm(self, req: TossConfirmRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):

@@ -112,7 +112,7 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     return response
 
 def get_payment_history(email: str, db: Session):
-    return db.query(PaymentHistoryDB).filter(PaymentHistoryDB.email == email).all()
+    return json.loads(db.query(PaymentHistoryDB).filter(PaymentHistoryDB.email == email).all())
 
 def get_items(item_id: int = None, db: Session = None, payment_class: str = None):
     if item_id and payment_class is None:
