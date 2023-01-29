@@ -41,11 +41,11 @@ def apply_optimizations():
         ldm.modules.attention.CrossAttention.forward = sd_hijack_optimizations.xformers_attention_forward
         ldm.modules.diffusionmodules.model.AttnBlock.forward = sd_hijack_optimizations.xformers_attnblock_forward
         optimization_method = 'xformers'
-    # elif cmd_opts.opt_sub_quad_attention:
-    #     print("Applying sub-quadratic cross attention optimization.")
-    #     ldm.modules.attention.CrossAttention.forward = sd_hijack_optimizations.sub_quad_attention_forward
-    #     ldm.modules.diffusionmodules.model.AttnBlock.forward = sd_hijack_optimizations.sub_quad_attnblock_forward
-    #     optimization_method = 'sub-quadratic'
+    elif cmd_opts.opt_sub_quad_attention:
+        print("Applying sub-quadratic cross attention optimization.")
+        ldm.modules.attention.CrossAttention.forward = sd_hijack_optimizations.sub_quad_attention_forward
+        ldm.modules.diffusionmodules.model.AttnBlock.forward = sd_hijack_optimizations.sub_quad_attnblock_forward
+        optimization_method = 'sub-quadratic'
     elif cmd_opts.opt_split_attention_v1:
         print("Applying v1 cross attention optimization.")
         ldm.modules.attention.CrossAttention.forward = sd_hijack_optimizations.split_cross_attention_forward_v1

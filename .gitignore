@@ -47,3 +47,4 @@ conf/*
 modules/api/conf
 /wget-log*
 /cache.json
+cache.json.lock
