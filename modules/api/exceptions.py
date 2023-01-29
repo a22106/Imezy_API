@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from fastapi import HTTPException, status
 from .logs import print_message
 

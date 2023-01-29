@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import smtplib, ssl
 import json
 import uuid
@@ -82,7 +83,7 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     payload = f"{{\"paymentKey\":\"{toss_request.payment_key}\",\"amount\":\"{toss_request.amount}\",\"orderId\":\"{toss_request.order_id}\"}}"
 
     headers = {
-        'Authorization': "Basic dGVzdF9za19rNmJKWG1nbzI4ZWdHbDFiTUU2VkxBbkdLV3g0Og==",
+        'Authorization': f"Basic dGVzdF9za19LbWE2MFJaYmxycTZ5bTJ4eDdaOHd6WVdCbjE0Og==",
         'Content-Type': "application/json"
         }
 
@@ -101,7 +102,7 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     payment_history_db = PaymentHistoryDB()
     payment_history_db.email = email
     payment_history_db.order_id = toss_request.order_id
-    payment_history_db.order_name = response["orderName"]
+    # payment_history_db.order_name = response["orderName"]
     payment_history_db.payment_key = toss_request.payment_key
     payment_history_db.amount = toss_request.amount
     payment_history_db.response = json.dumps(response)
@@ -112,7 +113,12 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     return response
 
 def get_payment_history(email: str, db: Session):
-    return json.loads(db.query(PaymentHistoryDB).filter(PaymentHistoryDB.email == email).all())
+    hist_db = db.query(PaymentHistoryDB).filter(PaymentHistoryDB.email == email).all()
+    res = []
+    for data in hist_db:
+        res.append(json.loads(data.response))
+    return res
+    
 
 def get_items(item_id: int = None, db: Session = None, payment_class: str = None):
     if item_id and payment_class is None:

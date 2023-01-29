@@ -496,7 +496,7 @@ class PaymentHistoryDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
     order_id = Column(String, nullable=False)
-    order_name = Column(String, nullable=False)
+    # order_name = Column(String, nullable=False)
     payment_key = Column(String, nullable=False)
     amount = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.now)

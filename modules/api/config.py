@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # credits config
     DEFAULT_CREDITS: int
     CREDITS_PER_IMAGE: int
+    TOSS_SECRET_KEY_HEADER: str
     
     # verification config
     VERIFICATION_EXPIRE_SECONDS: int

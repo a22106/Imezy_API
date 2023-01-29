@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 from .database import engine, SessionLocal, get_db
 from . import models
 from .auth import verify_password, get_password_hashed
