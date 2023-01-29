@@ -1,7 +1,7 @@
 import math
 import sys
 import traceback
-import importlib
+import psutil
 
 import torch
 from torch import einsum
@@ -12,6 +12,8 @@ from einops import rearrange
 from modules import shared, errors, devices
 from modules.hypernetworks import hypernetwork
 
+from .sub_quadratic_attention import efficient_dot_product_attention
+
 
 if shared.cmd_opts.xformers or shared.cmd_opts.force_enable_xformers:
     try:
@@ -20,6 +22,19 @@ if shared.cmd_opts.xformers or shared.cmd_opts.force_enable_xformers:
     except Exception:
         print("Cannot import xformers", file=sys.stderr)
         print(traceback.format_exc(), file=sys.stderr)
+
+
+def get_available_vram():
+    if shared.device.type == 'cuda':
+        stats = torch.cuda.memory_stats(shared.device)
+        mem_active = stats['active_bytes.all.current']
+        mem_reserved = stats['reserved_bytes.all.current']
+        mem_free_cuda, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
+        mem_free_torch = mem_reserved - mem_active
+        mem_free_total = mem_free_cuda + mem_free_torch
+        return mem_free_total
+    else:
+        return psutil.virtual_memory().available
 
 
 # see https://github.com/basujindal/stable-diffusion/pull/117 for discussion
@@ -74,27 +89,6 @@ def split_cross_attention_forward(self, x, context=None, mask=None):
     k_in = self.to_k(context_k)
     v_in = self.to_v(context_v)
 
-    k_in *= self.scale
-
-    del context, x
-
-    q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q_in, k_in, v_in))
-    del q_in, k_in, v_in
-
-    r1 = torch.zeros(q.shape[0], q.shape[1], v.shape[2], device=q.device, dtype=q.dtype)
-
-    stats = torch.cuda.memory_stats(q.device)
-    mem_active = stats['active_bytes.all.current']
-    mem_reserved = stats['reserved_bytes.all.current']
-    mem_free_cuda, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
-    mem_free_torch = mem_reserved - mem_active
-    mem_free_total = mem_free_cuda + mem_free_torch
-
-    gb = 1024 ** 3
-    tensor_size = q.shape[0] * q.shape[1] * k.shape[1] * q.element_size()
-    modifier = 3 if q.element_size() == 2 else 2.5
-    mem_required = tensor_size * modifier
-    steps = 1
     dtype = q_in.dtype
     if shared.opts.upcast_attn:
         q_in, k_in, v_in = q_in.float(), k_in.float(), v_in if v_in.device.type == 'mps' else v_in.float()
@@ -148,19 +142,8 @@ def split_cross_attention_forward(self, x, context=None, mask=None):
     return self.to_out(r2)
 
 
-def check_for_psutil():
-    try:
-        spec = importlib.util.find_spec('psutil')
-        return spec is not None
-    except ModuleNotFoundError:
-        return False
-
-invokeAI_mps_available = check_for_psutil()
-
 # -- Taken from https://github.com/invoke-ai/InvokeAI and modified --
-if invokeAI_mps_available:
-    import psutil
-    mem_total_gb = psutil.virtual_memory().total // (1 << 30)
+mem_total_gb = psutil.virtual_memory().total // (1 << 30)
 
 def einsum_op_compvis(q, k, v):
     s = einsum('b i d, b j d -> b i j', q, k)
@@ -384,12 +367,7 @@ def cross_attention_attnblock_forward(self, x):
 
         h_ = torch.zeros_like(k, device=q.device)
 
-        stats = torch.cuda.memory_stats(q.device)
-        mem_active = stats['active_bytes.all.current']
-        mem_reserved = stats['reserved_bytes.all.current']
-        mem_free_cuda, _ = torch.cuda.mem_get_info(torch.cuda.current_device())
-        mem_free_torch = mem_reserved - mem_active
-        mem_free_total = mem_free_cuda + mem_free_torch
+        mem_free_total = get_available_vram()
 
         tensor_size = q.shape[0] * q.shape[1] * k.shape[2] * q.element_size()
         mem_required = tensor_size * 2.5
@@ -448,3 +426,19 @@ def xformers_attnblock_forward(self, x):
         return x + out
     except NotImplementedError:
         return cross_attention_attnblock_forward(self, x)
+
+def sub_quad_attnblock_forward(self, x):
+    h_ = x
+    h_ = self.norm(h_)
+    q = self.q(h_)
+    k = self.k(h_)
+    v = self.v(h_)
+    b, c, h, w = q.shape
+    q, k, v = map(lambda t: rearrange(t, 'b c h w -> b (h w) c'), (q, k, v))
+    q = q.contiguous()
+    k = k.contiguous()
+    v = v.contiguous()
+    out = sub_quad_attention(q, k, v, q_chunk_size=shared.cmd_opts.sub_quad_q_chunk_size, kv_chunk_size=shared.cmd_opts.sub_quad_kv_chunk_size, chunk_threshold=shared.cmd_opts.sub_quad_chunk_threshold, use_checkpoint=self.training)
+    out = rearrange(out, 'b (h w) c -> b c h w', h=h)
+    out = self.proj_out(out)
+    return x + out
