@@ -9,8 +9,10 @@ from typing import Dict, List
 from datetime import datetime, timedelta
 
 from .database import Base, SessionLocal, engine
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Table, JSON
 from sqlalchemy.orm import relationship
+
+from .config import settings
 
 API_NOT_ALLOWED = [
     "self",
@@ -332,18 +334,40 @@ class UpdateCreditsResponse(BaseModel):
     
 class DownloadImageRequest(BaseModel):
     index: int = Field(title="Image Index")    
-    
-class VerifyEmailRequest(BaseModel):
-    email: str = Field(title="Email")
+
+class EmailVerificaionSendRequest(BaseModel):
+    email_to: Optional[str] = Field(title="Email To", description="Email to send verification code to", default=None)
+
+class EmailVerificationCheckRequest(BaseModel):
+    email_to: str = Field(title="Email")
     code: str = Field(title="Code")
+    expires: int = Field(title="Expires", description="Time in seconds until the code expires", default=settings.VERIFICATION_EXPIRE_SECONDS) # 5 minutes
+
 
 class FeedbackEmailRequest(BaseModel):
     type: int = Field(title="Type")
     email: str = Field(title="Email")
     subject: str = Field(title="Subject")
     content: str = Field(title="Content")
-    
 
+class EmailSendRequest(BaseModel):
+    email: str = Field(title="Email")
+    subject: str = Field(title="Subject")
+    content: str = Field(title="Content")
+    attachments: Optional[List[str]] = Field(title="Attachments")
+    
+class ModifierCreateRequest(BaseModel):
+    modifier: str = Field(title="Modifier class")
+    category: str = Field(title="Category")
+    prompt: str = Field(title="Prompt")
+    prompt_korean: Optional[str] = Field(title="Prompt Korean")
+
+class TossConfirmRequest(BaseModel):
+    payment_key:str = Field(title="Payment Key")
+    order_id:str = Field(title="Order ID")
+    amount:int = Field(title="Amount")
+    # payments_res: str = Field(title="Payments Res")
+    
 class AuthSettings(BaseModel):
     SECRET_KEY_ACCESS = "secret_api_key"
     SECRET_KEY_REFRESH = "secret_refresh"
@@ -371,7 +395,7 @@ class CreditsDB(Base):
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
     credits = Column(Integer, default=200)
-    last_updated = Column(DateTime, default=datetime.now)
+    updated = Column(DateTime, default=datetime.now)
     email = Column(String, ForeignKey("users.email"))
     
 class UsersAdminDB(Base):
@@ -413,3 +437,67 @@ class VerifyEmailDB(Base):
     code = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.now)
     verified = Column(Boolean, default=False)
+
+class VerifyEmailChangeDB(Base):
+    __tablename__ = "verify_email_change"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email_from = Column(String, ForeignKey("users.email"))
+    email_to = Column(String, ForeignKey("users.email"))
+    code = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+
+class ModifiersDB(Base):
+    __tablename__ = "modifiers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    modifier = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    prompt = Column(String, nullable=False)
+    prompt_korean = Column(String)
+    
+
+class ModifiersClassDB(Base):
+    __tablename__ = "modifiers_class"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    modifier = Column(String, nullable=False)
+    
+class OrderclassesDB(Base):
+    __tablename__ = "order_classes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    order_class = Column(String, nullable=False)
+    credits = Column(Integer, nullable=False)
+    
+class OrderNamesCreditsDB(Base):
+    __tablename__ = "order_names_credits"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    credits = Column(Integer, nullable=False)
+    order_class = Column(String, ForeignKey("order_classes.order_class"))
+    
+class OrderNamesSubsDB(Base):
+    __tablename__ = "order_names_subs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    credits = Column(Integer, nullable=False)
+    order_class = Column(String, ForeignKey("order_classes.order_class"))
+    
+class PaymentHistoryDB(Base):
+    __tablename__ = "payment_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, ForeignKey("users.email"))
+    order_id = Column(String, nullable=False)
+    # order_name = Column(String, nullable=False)
+    payment_key = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    updated = Column(DateTime, default=datetime.now)
+    response = Column(JSON, nullable=False)

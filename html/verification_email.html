@@ -13,14 +13,90 @@
     <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
     <meta name="x-apple-disable-message-reformatting">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{subject}}</title>
-    {% include "_styles.html" %}
+    <title>Imezy Verification</title>
+    <style type="text/css">
+    
+        img{
+            width: min(60%,100px);
+        }
+        .body__container{
+            position: relative;
+        }
+        hr{
+            margin: 0;
+        }
+        .body__container::after{
+            width: 265px;
+            height: 10px;
+            background-color: #150050;
+            position: absolute;
+            top: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            content: "";
+        }
+        .body__container{
+            text-align: center;
+            align-items: center;
+            font-family: sans-serif;
+        }
+        h1{
+            padding-top: 50px;
+            font-size: 25px;
+            padding-bottom: 20px;
+            margin: 0;
+        
+        }
+        .body__container p{
+            text-align: center;
+            color: #7a7a7a;
+            font-size: 20px;
+            margin: 0;padding: 0;
+        }
+        .body__description{
+            padding-bottom: 40px;
+        }
+        .logo__container{
+            align-items: center;
+        }
+        #code{
+            color: #fff;
+            font-size: 50px;
+            padding: 20px 100px;
+            background-color: #150050;
+        }
+        .footer{
+            font-family: sans-serif;
+            width: 100%;
+            background-color: #150050;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        a{
+            color: #fff;
+        }
+        @media (max-width:100px) {
+            #code{
+            color: #fff;
+            font-size: 50px;
+            text-align: center;
+            padding: 10px 80px;
+            background-color: #150050;
+        }
+            .footer{
+                font-size: 12px;
+            }
+            
+        }
+    </style>
 </head>
 <body>
     <div class="content">
         <div style="width: 100%;display: flex;justify-content: center;padding: 10px 0;" id="logo__container">
-            <img src="./logo.png" alt="">
-           
+            <img src="{{logo}}" alt=" ">
         </div> <hr>
         <div class="body__container">
             <h1>Hello <span id="user">{{username}}</span></h1>

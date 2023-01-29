@@ -1,15 +1,4 @@
-''' 할 일
-
-- [ ] 1. 기능별로 라우터를 나누어서 api.py에 합치기
-- [v] 2. img2img 등 기능에도 크래딧 차감 기능 추가하기
-- [v] 3. 크래딧 업데이트에 적용한 refesh token으로 접근 시 access token을 새로 발급해주는 기능 추가하기
-- [v] 4. 생성된 사진 용량 줄여서 저장하기
-- [v] 5. 유저 이름 4자 이상으로 제한하기 및 규칙 만들기
-- [v] 6. 이메일 인증 기능 추가하기
-- [v] 7. jwt에 이메일 인증 여부 내용 추가하기
-
-'''
-
+# -*- coding: utf-8 -*-
 import base64
 import io, os
 import time
@@ -43,7 +32,7 @@ from PIL import PngImagePlugin,Image
 from modules.sd_models import checkpoints_list, find_checkpoint_config
 from modules.realesrgan_model import get_realesrgan_models
 from modules import devices
-from typing import List
+from typing import List, Union
 
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -51,7 +40,7 @@ import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 
 from .database import engine, get_db
-from . import models, credits
+from . import models, credits, styles
 from .users import *
 from .auth import *
 from .logs import print_message
@@ -60,9 +49,9 @@ from . import utils as api_utils
 
 models.Base.metadata.create_all(bind=engine)
 
-DEFAULT_CREDITS = 500
-CREDITS_PER_IMAGE = 10
-with open('modules/api/configs.json', 'r') as f:
+DEFAULT_CREDITS = settings.DEFAULT_CREDITS                     
+CREDITS_PER_IMAGE = settings.CREDITS_PER_IMAGE
+with open('./modules/api/configs.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
 
 def upscaler_to_index(name: str):
@@ -209,30 +198,62 @@ class Api:
         self.add_api_route("/image/delete/{image_id}", self.delete_image, methods=["DELETE"])
         self.add_api_route("/image/download/{image_id}", self.download_image, methods=["GET"])
         
-        self.add_api_route("/email/verification/send", self.verify_email_send_code, methods=["POST"]) # send verification code
-        self.add_api_route("/email/verification/check", self.verify_email_check_code, methods=["PUT"]) # check verification code
+        self.add_api_route("/email/verification/send", self.email_verification_send, methods=["POST"]) # send verification code
+        self.add_api_route("/email/verification/check", self.email_verification_check, methods=["PUT"]) # check verification code
+        self.add_api_route("/email/verification/change", self.email_verification_change_check, methods=["POST"]) # resend verification code
         self.add_api_route("/email/feedback/send", self.feedback_email_send, methods=["POST"]) # send feedback email
         self.add_api_route("/email/send", self.send_email, methods=["POST"])
         
-        @self.app.exception_handler(AuthJWTException)
-        def authjwt_exception_handler(request: Request, exc: AuthJWTException):
-            return JSONResponse(
-                status_code=exc.status_code,
-                content={"detail": exc.message},
-            )
-        # self.add_api_route("/extra/res_codes", self.get_res_codes, methods=["GET"])
+        self.add_api_route("/style/modifier", self.modifiers_read, methods=["GET"])
+        self.add_api_route("/style/modifier/{modifier}", self.modifiers_read, methods=["GET"])
+        # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
+        # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
+        
+        self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
+        self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
+        self.add_api_route("/payment/orderNames/subs", self.get_order_names_subs, methods=["GET"])
+        self.add_api_route("/payment/history", self.get_payment_history, methods=["GET"])
+        self.add_api_route("/payment/history/{email}", self.get_payment_history_email, methods=["GET"])
+        self.add_api_route("/payment/order_id/generate/{order_name}", self.generate_order_id, methods=["GET"])
+        self.add_api_route("/payment/toss/confirm", self.toss_confirm, methods=["POST"])
         
     # def get_res_codes(self):
     #     return {"response_codes": Responses.res_codes}
     
+    def get_order_names(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db = db)
     
-    def send_email(self, subject, body, to_email):
-        env = Environment(
-            loader=FileSystemLoader("."),
-            autoescape=select_autoescape(["html", "xml"])
-        )
+    def get_order_names_credits(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db = db, payment_class="credits")
+    
+    def get_order_names_subs(self, item_id: int = None, db: Session = Depends(get_db)):
+        return api_utils.get_items(item_id,db = db, payment_class="subs")
+    
+    def generate_order_id(self, order_name: str):
+        # order_id = f"imezy_{order_name}_{api_utils.get_random_string(16)}"
+        order_id = api_utils.generate_order_id(order_name)
+        print_message(f"order_id: {order_id}")
+        return {"order_id": order_id}
+    
+    def get_payment_history(self, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
+        print_message("get_payment_history", auth["email"])
+        email = auth['email']
         
+        return api_utils.get_payment_history(email, db = db)
     
+    def get_payment_history_email(self, email: str, db: Session = Depends(get_db)):
+        print_message("get_payment_history_email", email)
+        
+        return api_utils.get_payment_history(email, db = db)
+    
+    def toss_confirm(self, req: TossConfirmRequest, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
+        print_message(f"toss_confirm request: {req}")
+        return api_utils.toss_confirm(req, db = db, email = auth['email'])
+    
+    def send_email(self, email: EmailSendRequest, db: Session = Depends(get_db)):
+        print_message(f"Send email to {email.email}")
+        api_utils.send_email(email.email, email.subject, email.content, attachments=email.attachments)
+
     def search_image(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message("search_image", auth)
@@ -334,39 +355,59 @@ class Api:
         if data["images"]:
             return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
         
-    def verify_email_send_code(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def email_verification_send(self, req: EmailVerificaionSendRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message(f"Verify email: {auth['email']} create code")
-        
+        print(req.email_to)
         from random import randint
         code = randint(100000, 999999)
 
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
-            verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
-        
+        if req.email_to != "": # 특정 이메일로 보내는 경우
+            email_to = req.email_to
+            email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username            
+            verify_email_db = models.VerifyEmailChangeDB(email_from=auth["email"], email_to=email_to, code=code)
             db.add(verify_email_db)
             db.commit()
-        else:
-            verify_email_db.code = code
-            verify_email_db.updated = datetime.now()
-            db.commit()        
+        else: # 자신의 이메일로 보내는 경우
+            email_to = auth["email"]
+            email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == email_to).first().username
+            if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None: # 인증코드가 발급되지 않은 경우
+                verify_email_db = models.VerifyEmailDB(email=auth["email"], code=code)
+            
+                db.add(verify_email_db)
+                db.commit()
+            else: # 이미 인증코드가 발급된 경우
+                verify_email_db.code = code
+                verify_email_db.updated = datetime.now()
+                db.commit()
         
         # subject = "Imezy 이메일 인증 코드"
         subject = "Imezy Email Verification Code"
-        content = f"Your verification code is {code}\n Copy and paste the code into the verification code field."
+        with open(settings.VERIFICATION_MAIL_HTML_PATH, "r") as f:
+            content = f.read()\
+                .replace("{{code}}", str(code))\
+                .replace("{{username}}", email_to_username)\
+                .replace("{{logo}}", settings.IMEZY_LOGO_250)
         
-        api_utils.send_email(auth["email"], subject, content)
+        result = api_utils.send_email(email_to, subject, content)
+        print_message(result["detail"])
+        if result["status"] == "success":
+            return result
+        elif result["status"] == "fail":
+            db.delete(verify_email_db)
+            db.commit()
+            raise HTTPException(status_code=500, detail=result["detail"])    
+            
         
-        return {"detail": f"Sended 6-digits code to {auth['email']}"}
+        return {"detail": f"Sended 6-digits code to {email_to}"}
     
-    def verify_email_check_code(self, req: VerifyEmailRequest, db: Session = Depends(get_db)):
-        print_message(f"Check code: {req.email}")
-        # expire_seconds = 60 * 3 + 5 # 3분 5초 후 만료
-        expire_seconds = 30 # 30초 후 만료
+    def email_verification_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
+        print_message(f"Check code: {req.email_to}")
+        expire_seconds = req.expires
         
         # db 불러오기
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
-            return HTTPException(status_code=404, detail=f"User {req.email} is not exist")
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email_to).first()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email_to} is not exist")
         
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
@@ -386,19 +427,42 @@ class Api:
         db.commit()
         
         return {"detail": f"Code is correct"}
+    
+    def email_verification_change_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
+        print_message(f"Check code: {req.email_to}")
+        expire_seconds = req.expires
         
+        # db 불러오기
+        if (result := db.query(models.VerifyEmailChangeDB).filter(models.VerifyEmailChangeDB.email_to == req.email_to).all()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email_to} is not exist")
+        verify_email_db = result[-1]
+        print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}")
+        
+        # 만료 여부 확인
+        now = datetime.now().replace(microsecond=0)
+        total_sec = (now - verify_email_db.updated).total_seconds()
+        print_message(f"datetime.now: {now}, updated: {verify_email_db.updated}, total_seconds: {total_sec}")
+        if (datetime.now() - verify_email_db.updated).total_seconds() > expire_seconds:
+            print_message(f"Code is expired")
+            raise exceptions.code_exception_exception(0)
+        # 코드 일치 여부 확인
+        elif int(verify_email_db.code) != int(req.code):
+            print_message(f"Code is not correct")
+            raise exceptions.code_exception_exception(1)
+        
+        return {"status": "success", "detail": f"Code is correct"}
         
     def feedback_email_send(self, req: FeedbackEmailRequest, db: Session = Depends(get_db)):
         print_message(f"Send feedback email: {req.email}")
         
-        feedback_type = IMEZY_CONFIG['feedback_type'][str(req.feedback_type)]
+        feedback_type = IMEZY_CONFIG['feedback_type'][str(req.type)]
         subject = req.subject
-        content = f"User: {req.email}\nContent: {req.content}"
+        content = f"Feedback type: {feedback_type}\n\nSent from: {req.email}\n\n{req.content}"
         email = req.email
         
-        api_utils.send_email(IMEZY_CONFIG['feedback_email'], subject, content)
+        api_utils.send_email(IMEZY_CONFIG["admin_email"], subject, content)
         
-        return {"detail": f"Sended feedback email to {IMEZY_CONFIG['feedback_email']}"}
+        return {"detail": f"Sended feedback email to {email}"}
         
     
     def update_email(self, req: UpdateEmailRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
@@ -541,8 +605,8 @@ class Api:
         
         access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
         refresh_token = create_refresh_token(email=user_db.email, user_id=user_db.id)
-        
         former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
+        
         # check if user has a refresh token is outdated
         if not former_rtoken:
             new_rtoken = models.RefreshTokenDB()
@@ -616,13 +680,16 @@ class Api:
             raise exceptions.get_user_exception()
         if auth["email"] != user.email:
             raise HTTPException(status_code=401, detail="Unauthorized user. Incorrect email")
+        print_message(f"Updating password for user: {user.email}")
         
         if user.new_password != user.confirm_password:
             raise HTTPException(status_code=400, detail="New password and confirm password do not match")
         elif not update_password(db, user): # update_password returns True if password was updated. it updates the password it self
             raise HTTPException(status_code=400, detail="Incorrect old password")
         
-        return UpdatePasswordResponse(info="Password updated successfully")
+        info = f"Password updated successfully for user: {user.email}"
+        print_message(info)
+        return UpdatePasswordResponse(info=info)
 
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
@@ -633,10 +700,10 @@ class Api:
         is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
         if is_exist[0]:
             print_message(f"The username '{create_user.username}' is already in use")
-            raise HTTPException(status_code=400, detail=f"Username '{create_user.username}' is already in use")
+            raise HTTPException(status_code=400, detail=f"username", headers={"username": create_user.username})
         elif is_exist[1]:
             print_message(f"The email {create_user.email} is already in use")
-            raise HTTPException(status_code=400, detail=f"The email {create_user.email} is already in use")
+            raise HTTPException(status_code=400, detail=f"email", headers={"email": create_user.email})
         
         create_user_model = models.UsersDB()
         create_user_model.email = create_user.email.lower()
@@ -790,12 +857,12 @@ class Api:
         db.add(imezy_update_db)
 
         # 크레딧 업데이트
-        updateing_creedit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
-        if credits.update_cred(user_db.email, updateing_creedit_inc, db) == -1:
+        updateing_credit_inc = -created_images_num *CREDITS_PER_IMAGE # 이미지당 10크레딧 차감
+        if credits.update_cred(user_db.email, updateing_credit_inc, db) == -1:
             print_message(f"{auth['email']}'s update_cred failed")
             raise exceptions.get_user_exception()
         
-        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_creedit_inc}, generated images: {created_images_num}")
+        print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_credit_inc}, generated images: {created_images_num}")
         
         response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
@@ -1180,18 +1247,36 @@ class Api:
         return credits.read_creds(db, user_email)
     
     
-    def update_cred(self, request: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def update_cred(self, req: UpdateCreditsRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         if auth['type'] == 'refresh':
             return self.reissue_access_token(db=db, auth=auth)
-        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {request.credits_inc}, target user email: {request.email}")
+        print_message(f"Updating credits. access user email: {auth.get('email', None)}, inc: {req.credits_inc}, target user email: {req.email}")
         
-        request = request.dict()
+        req = req.dict()
         user_admin_db = db.query(models.UsersAdminDB).filter(models.UsersAdminDB.email == auth.get("email", None)).first()
         
         # if the user is not admin, he can only update his own credits
-        if user_admin_db != None or request['email'] == auth['email']:
+        if user_admin_db != None or req['email'] == auth['email']:
             print_message("User is admin or updating his own credits")
-            current_credits = credits.update_cred(request["email"], request["credits_inc"], db)
-            return UpdateCreditsResponse(info = "Credits updated", email=request['email'], credits_inc=request['credits_inc'], currunt_credits=current_credits)
+            current_credits = credits.update_cred(req["email"], req["credits_inc"], db)
+            return UpdateCreditsResponse(info = "Credits updated", email=req['email'], credits_inc=req['credits_inc'], currunt_credits=current_credits)
         else:
             raise HTTPException(status_code=403, detail="You are not authorized to update credits for this user")
+    
+    def modifiers_read(self, db: Session = Depends(get_db), modifier: int = None):
+        '''
+        modifier starts from 1
+        modifier: None - return all modifier categories
+        modifier: 0 - return all modifiers
+        modifier: 1, ..., n - return all modifiers in category n
+        '''
+        print_message(f"Reading modifiers. modifier: {modifier}")
+        modifier_len = len(db.query(models.ModifiersClassDB).all())
+        if modifier == None:
+            response = styles.read_modifier(db)
+            return response
+        elif (type(modifier) is not int) or (modifier < -1 or modifier > modifier_len):
+            raise HTTPException(status_code=400, detail=f"Invalid modifier id, must be an integer(0 <= id <= {modifier_len}).  0 - return all modifiers. 1, ..., n - return all modifiers in category n")
+        response = styles.read_modifier(db, modifier)
+    
+        return response

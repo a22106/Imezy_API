@@ -1,3 +1,16 @@
+# imezy
+```
+# install pm2 for deploy app
+npm install pm2 -g
+
+# build the python app
+pm2 start webui.py --name="webui" -f --interpreter python -- --listen --cors-allow-origins "*" --api --enable-insecure-extension-access
+
+# build the app in debug mode
+pm2 start webui.py --name="webui" -f --interpreter python -- --listen --cors-allow-origins "*" --api --ui-debug-mode --enable-insecure-extension-access
+
+```
+
 # Stable Diffusion web UI
 A browser interface based on Gradio library for Stable Diffusion.
 
