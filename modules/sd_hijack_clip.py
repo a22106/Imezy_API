@@ -37,10 +37,41 @@ class FrozenCLIPEmbedderWithCustomWordsBase(torch.nn.Module):
         multipliers = []
         last_comma = -1
 
+        def next_chunk(is_last=False):
+            """puts current chunk into the list of results and produces the next one - empty;
+            if is_last is true, tokens <end-of-text> tokens at the end won't add to token_count"""
+            nonlocal token_count
+            nonlocal last_comma
+            nonlocal chunk
+
+            if is_last:
+                token_count += len(chunk.tokens)
+            else:
+                token_count += self.chunk_length
+
+            to_add = self.chunk_length - len(chunk.tokens)
+            if to_add > 0:
+                chunk.tokens += [self.id_end] * to_add
+                chunk.multipliers += [1.0] * to_add
+
+            chunk.tokens = [self.id_start] + chunk.tokens + [self.id_end]
+            chunk.multipliers = [1.0] + chunk.multipliers + [1.0]
+
+            last_comma = -1
+            chunks.append(chunk)
+            chunk = PromptChunk()
+
         for tokens, (text, weight) in zip(tokenized, parsed):
-            i = 0
-            while i < len(tokens):
-                token = tokens[i]
+            if text == 'BREAK' and weight == -1:
+                next_chunk()
+                continue
+
+            position = 0
+            while position < len(tokens):
+                token = tokens[position]
+
+                if token == self.comma_token:
+                    last_comma = len(chunk.tokens)
 
                 embedding, embedding_length_in_tokens = self.hijack.embedding_db.find_embedding_at_position(tokens, i)
 
@@ -59,37 +90,32 @@ class FrozenCLIPEmbedderWithCustomWordsBase(torch.nn.Module):
                     multipliers = multipliers[:last_comma] + [1.0] * rem + reloc_mults
 
                 if embedding is None:
-                    remade_tokens.append(token)
-                    multipliers.append(weight)
-                    i += 1
-                else:
-                    emb_len = int(embedding.vec.shape[0])
-                    iteration = len(remade_tokens) // 75
-                    if (len(remade_tokens) + emb_len) // 75 != iteration:
-                        rem = (75 * (iteration + 1) - len(remade_tokens))
-                        remade_tokens += [self.id_end] * rem
-                        multipliers += [1.0] * rem
-                        iteration += 1
-                    fixes.append((iteration, (len(remade_tokens) % 75, embedding)))
-                    remade_tokens += [0] * emb_len
-                    multipliers += [weight] * emb_len
-                    used_custom_terms.append((embedding.name, embedding.checksum()))
-                    i += embedding_length_in_tokens
+                    chunk.tokens.append(token)
+                    chunk.multipliers.append(weight)
+                    position += 1
+                    continue
 
-        token_count = len(remade_tokens)
-        prompt_target_length = get_target_prompt_token_count(token_count)
-        tokens_to_add = prompt_target_length - len(remade_tokens)
+                emb_len = int(embedding.vec.shape[0])
+                if len(chunk.tokens) + emb_len > self.chunk_length:
+                    next_chunk()
 
-        remade_tokens = remade_tokens + [self.id_end] * tokens_to_add
-        multipliers = multipliers + [1.0] * tokens_to_add
+                chunk.fixes.append(PromptChunkFix(len(chunk.tokens), embedding))
 
-        return remade_tokens, fixes, multipliers, token_count
+                chunk.tokens += [0] * emb_len
+                chunk.multipliers += [weight] * emb_len
+                position += embedding_length_in_tokens
 
-    def process_text(self, texts):
-        used_custom_terms = []
-        remade_batch_tokens = []
-        hijack_comments = []
-        hijack_fixes = []
+        if len(chunk.tokens) > 0 or len(chunks) == 0:
+            next_chunk(is_last=True)
+
+        return chunks, token_count
+
+    def process_texts(self, texts):
+        """
+        Accepts a list of texts and calls tokenize_line() on each, with cache. Returns the list of results and maximum
+        length, in tokens, of all texts.
+        """
+
         token_count = 0
 
         cache = {}

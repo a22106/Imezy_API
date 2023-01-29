@@ -46,3 +46,4 @@ generated/*
 conf/*
 modules/api/conf
 wget-log*
+/cache.json
