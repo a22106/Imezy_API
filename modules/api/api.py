@@ -159,9 +159,9 @@ class Api:
         self.queue_lock = queue_lock
         api_middleware(self.app) # 이메일 인증이 필요한 기능은 ## 표시
         self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
-        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=TextToImageAuthResponse) ##
+        self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=models.TextToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
-        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=ImageToImageAuthResponse) ##
+        self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=models.ImageToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/extra-single-image", self.extras_single_image_api, methods=["POST"], response_model=ExtrasSingleImageResponse)
         self.add_api_route("/sdapi/v1/extra-single-image-auth", self.extras_single_image_api_auth, methods=["POST"], response_model=ExtrasSingleImageResponse) ##
         self.add_api_route("/sdapi/v1/extra-batch-images", self.extras_batch_images_api, methods=["POST"], response_model=ExtrasBatchImagesResponse)
@@ -223,6 +223,7 @@ class Api:
         self.add_api_route("/style/modifier/{modifier}", self.modifiers_read, methods=["GET"])
         # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
+        self.add_api_route("/style/style", self.styles_read, methods=["GET"])
         
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
         self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
@@ -1311,4 +1312,9 @@ class Api:
             raise HTTPException(status_code=400, detail=f"Invalid modifier id, must be an integer(0 <= id <= {modifier_len}).  0 - return all modifiers. 1, ..., n - return all modifiers in category n")
         response = styles.read_modifier(db, modifier)
     
+        return response
+    
+    def styles_read(self, db: Session = Depends(get_db)):
+        print_message("Reading styles")
+        response = styles.read_styles(db)
         return response
