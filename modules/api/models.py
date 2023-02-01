@@ -504,6 +504,26 @@ class PaymentHistoryDB(Base):
     amount = Column(Integer, nullable=False)
     updated = Column(DateTime, default=datetime.now)
     response = Column(JSON, nullable=False)
+    
+class StylesDB(Base):
+    __tablename__ = "styles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    name_korean = Column(String)
+    prompt = Column(String, nullable=False)
+    negative_prompt = Column(String, nullable=False)
+    denoising_strength = Column(Float, default=0.4)
+    seed = Column(Integer, default=-1)
+    cfg_scale = Column(Float, default=8.5)
+    steps = Column(Integer, default=30)
+    model = Column(Integer, default=0)
+    sampler = Column(String, default="DPM++ SDE Karras")
+    show = Column(Boolean, default=True)
+    # black background image is default
+    image = Column(String, default="black" )
+    
+
 class MemoryResponse(BaseModel):
     ram: dict = Field(title="RAM", description="System memory stats")
     cuda: dict = Field(title="CUDA", description="nVidia CUDA memory stats")

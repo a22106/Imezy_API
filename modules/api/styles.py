@@ -27,3 +27,12 @@ def read_modifier(db, mod: int = None):
         mod_category = db.query(models.ModifiersClassDB).filter(models.ModifiersClassDB.id == mod).first().modifier
         modifier = db.query(models.ModifiersDB).filter(models.ModifiersDB.modifier == mod_category).all()
         return modifier
+
+def read_styles(db):
+    """
+    Read styles from database
+    args:
+        db: database session
+    """
+    styles = db.query(models.StylesDB).all()
+    return styles
