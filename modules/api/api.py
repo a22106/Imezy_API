@@ -385,7 +385,7 @@ class Api:
                 verified_email_db.code = code
             else: # 인증코드가 발급되지 않은 경우
                 verify_email_db = models.VerifyEmailDB(email=email_to, code=code)
-            db.add(verify_email_db)
+                db.add(verify_email_db)
             db.commit()
         else: # 자신의 이메일로 보내는 경우
             email_to = auth["email"]
