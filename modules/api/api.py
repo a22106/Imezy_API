@@ -371,17 +371,20 @@ class Api:
         if data["images"]:
             return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
         
-    def email_verification_send(self, req: EmailVerificaionSendRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def email_verification_send(self, req: models.EmailVerificaionSendRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         print_message(f"Verify email: {auth['email']} create code")
         print(req.email_to)
         from random import randint
         code = randint(100000, 999999)
 
-        if req.email_to != "": # 특정 이메일로 보내는 경우
+        if req.email_to is not None: # 특정 이메일로 보내는 경우
             email_to = req.email_to
             email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username            
-            verify_email_db = models.VerifyEmailChangeDB(email_from=auth["email"], email_to=email_to, code=code)
+            if verified_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == email_to).first(): # 인증코드가 발급된 경우
+                verified_email_db.code = code
+            else: # 인증코드가 발급되지 않은 경우
+                verify_email_db = models.VerifyEmailDB(email=email_to, code=code)
             db.add(verify_email_db)
             db.commit()
         else: # 자신의 이메일로 보내는 경우
@@ -417,13 +420,13 @@ class Api:
         
         return {"detail": f"Sended 6-digits code to {email_to}"}
     
-    def email_verification_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
-        print_message(f"Check code: {req.email_to}")
-        expire_seconds = req.expires
+    def email_verification_check(self, req: models.EmailVerificationCheckRequest, db: Session = Depends(get_db)):
+        print_message(f"Checking email: {req.email}, code: {req.code}")
+        expire_seconds = 300 # 5분
         
         # db 불러오기
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email_to).first()) is None:
-            return HTTPException(status_code=404, detail=f"User {req.email_to} is not exist")
+        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == req.email).first()) is None:
+            return HTTPException(status_code=404, detail=f"User {req.email} is not exist")
         
         print_message(f"Correct code: {verify_email_db.code}, req code: {req.code}") # 코드 일치 여부 확인
         
@@ -442,11 +445,11 @@ class Api:
         verify_email_db.verified = True
         db.commit()
         
-        return {"detail": f"Code is correct"}
+        return {"detail": f"The code is correct"}
     
     def email_verification_change_check(self, req: EmailVerificationCheckRequest, db: Session = Depends(get_db)):
         print_message(f"Check code: {req.email_to}")
-        expire_seconds = req.expires
+        expire_seconds = 300
         
         # db 불러오기
         if (result := db.query(models.VerifyEmailChangeDB).filter(models.VerifyEmailChangeDB.email_to == req.email_to).all()) is None:

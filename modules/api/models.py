@@ -342,10 +342,8 @@ class EmailVerificaionSendRequest(BaseModel):
     email_to: Optional[str] = Field(title="Email To", description="Email to send verification code to", default=None)
 
 class EmailVerificationCheckRequest(BaseModel):
-    email_to: str = Field(title="Email")
+    email: str = Field(title="Email")
     code: str = Field(title="Code")
-    expires: int = Field(title="Expires", description="Time in seconds until the code expires", default=settings.VERIFICATION_EXPIRE_SECONDS) # 5 minutes
-
 
 class FeedbackEmailRequest(BaseModel):
     type: int = Field(title="Type")
