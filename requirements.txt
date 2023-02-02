@@ -39,3 +39,7 @@ fastapi_mail
 pydantic[dotenv]
 pymysql
 python-jose
+open_clip_torch
+sqlalchemy
+passlib
+gdown
