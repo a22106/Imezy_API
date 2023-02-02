@@ -383,6 +383,7 @@ class Api:
             email_to_username = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().username            
             if verified_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == email_to).first(): # 인증코드가 발급된 경우
                 verified_email_db.code = code
+                verified_email_db.updated = datetime.now()
             else: # 인증코드가 발급되지 않은 경우
                 verify_email_db = models.VerifyEmailDB(email=email_to, code=code)
                 db.add(verify_email_db)
