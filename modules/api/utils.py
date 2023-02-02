@@ -38,7 +38,7 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     mail_port = settings.EMAIL_ADMIN_PORT if not mail_port else mail_port
     mail_from = settings.EMAIL_ADMIN if not mail_from else mail_from
     mail_pw = settings.EMAIL_ADMIN_PW if not mail_pw else mail_pw
-    print("mail_host: ", mail_host, "mail_port: ", mail_port, "mail_from: ", mail_from, "mail_pw: ", mail_pw)
+    
     if not validate_email_address(mail_to):
         print(f"Email address is invalid: {mail_to}")
         raise invalid_email_exception()

@@ -403,7 +403,7 @@ class Api:
             content = f.read()\
                 .replace("{{code}}", str(code))\
                 .replace("{{username}}", email_to_username)\
-                .replace("{{logo}}", settings.IMEZY_LOGO_250)
+                .replace("{{logo}}", settings.IMEZY_LOGO_IMEZY)
         
         result = api_utils.send_email(email_to, subject, content)
         print_message(result["detail"])

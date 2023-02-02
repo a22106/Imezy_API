@@ -1,123 +1,65 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml"
-    xmlns:o="urn:schemas-microsoft-com:office:office" lang="en" xml:lang="en" style="width:100%;">
-
+<!DOCTYPE html>
+<html>
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <!--[if !mso><!-- -->
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <!--<![endif-->
-    <meta content="width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=no;" name="viewport">
-    <meta name="viewport" content="width=device-width">
-    <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
-    <meta name="x-apple-disable-message-reformatting">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Imezy Verification</title>
-    <style type="text/css">
-    
-        img{
-            width: min(60%,100px);
-        }
-        .body__container{
-            position: relative;
-        }
-        hr{
-            margin: 0;
-        }
-        .body__container::after{
-            width: 265px;
-            height: 10px;
-            background-color: #150050;
-            position: absolute;
-            top: -2px;
-            left: 50%;
-            transform: translateX(-50%);
-            content: "";
-        }
-        .body__container{
-            text-align: center;
-            align-items: center;
-            font-family: sans-serif;
-        }
-        h1{
-            padding-top: 50px;
-            font-size: 25px;
-            padding-bottom: 20px;
-            margin: 0;
-        
-        }
-        .body__container p{
-            text-align: center;
-            color: #7a7a7a;
-            font-size: 20px;
-            margin: 0;padding: 0;
-        }
-        .body__description{
-            padding-bottom: 40px;
-        }
-        .logo__container{
-            align-items: center;
-        }
-        #code{
-            color: #fff;
-            font-size: 50px;
-            padding: 20px 100px;
-            background-color: #150050;
-        }
-        .footer{
-            font-family: sans-serif;
-            width: 100%;
-            background-color: #150050;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        a{
-            color: #fff;
-        }
-        @media (max-width:100px) {
-            #code{
-            color: #fff;
-            font-size: 50px;
-            text-align: center;
-            padding: 10px 80px;
-            background-color: #150050;
-        }
-            .footer{
-                font-size: 12px;
-            }
-            
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Email Verification</title>
+  <style>
+    body {
+      background-color: #f3f3f3;
+      text-align: center;
+    }
+    .logo {
+      height: 100px;
+      margin-top: 40px;
+    }
+    .container {
+      background-color: white;
+      border-radius: 20px;
+      box-shadow: 2px 2px 10px gray;
+      margin: 50px auto;
+      padding: 40px;
+      width: 500px;
+    }
+    h1 {
+      margin-bottom: 40px;
+    }
+    p {
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+    .code {
+      background-color: #f3f3f3;
+      border: 1px solid gray;
+      border-radius: 10px;
+      display: inline-block;
+      font-size: 24px;
+      margin-bottom: 40px;
+      padding: 10px 20px;
+    }
+    .btn {
+      background-color: #0069d9;
+      border: none;
+      border-radius: 20px;
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 10px 20px;
+    }
+    .btn:hover {
+      background-color: #0053ba;
+    }
+  </style>
 </head>
 <body>
-    <div class="content">
-        <div style="width: 100%;display: flex;justify-content: center;padding: 10px 0;" id="logo__container">
-            <img src="{{logo}}" alt=" ">
-        </div> <hr>
-        <div class="body__container">
-            <h1>Hello <span id="user">{{username}}</span></h1>
-           <div class="body__description" >
-            <p style="padding-bottom:15px;">Thank you for using the imezy.</p>
-            <p style="padding-bottom: 15px;">Enter the authentication code below to verify your account.</p>
-           </div>
-            <h1 id="code">{{code}}</h1>
-        </div>
-        <div style="padding-top:150px">
-            <div class="footer">
-                <div>
-                    <p>If this is not the account you registered with yourself, please report it.</p>
-                    <a href="#" style="display: block;">Report</a>
-                    <p></p>
-                    <span>Ⓒ Aivill Co. all rights reserved</span>
-                    
-                </div>
-            </div >
-        </div>
-    </div>
-    
+  <div class="container">
+    <img class="logo" src="{{logo}}" alt="logo">
+    <h1>Hello {{username}}</h1>
+    <p>Thank you for using the imezy.</p>
+    <p>Enter the authentication code below to verify your account.</p>
+    <p class="code">{{code}}</p>
+    <p>If this is not the account you registered with yourself, please report it.</p>
+    <a href="http://www.imezy.me/feedback">Report</a>
+    <p>Ⓒ Aivill Co. all rights reserved</p>
+  </div>
 </body>
 </html>
