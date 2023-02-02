@@ -81,7 +81,7 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     payload = f"{{\"paymentKey\":\"{toss_request.payment_key}\",\"amount\":\"{toss_request.amount}\",\"orderId\":\"{toss_request.order_id}\"}}"
 
     headers = {
-        'Authorization': f"Basic dGVzdF9za19LbWE2MFJaYmxycTZ5bTJ4eDdaOHd6WVdCbjE0Og==",
+        'Authorization': f"Basic {settings.TOSS_SECRET_KEY_HEADER}",
         'Content-Type': "application/json"
         }
 
