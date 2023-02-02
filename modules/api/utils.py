@@ -5,10 +5,6 @@ import uuid
 import random
 import string
 
-from fastapi import Depends, Response, status
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
-
 from email_validator import validate_email, EmailNotValidError
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -42,7 +38,7 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     mail_port = settings.EMAIL_ADMIN_PORT if not mail_port else mail_port
     mail_from = settings.EMAIL_ADMIN if not mail_from else mail_from
     mail_pw = settings.EMAIL_ADMIN_PW if not mail_pw else mail_pw
-    
+    print("mail_host: ", mail_host, "mail_port: ", mail_port, "mail_from: ", mail_from, "mail_pw: ", mail_pw)
     if not validate_email_address(mail_to):
         print(f"Email address is invalid: {mail_to}")
         raise invalid_email_exception()
@@ -61,11 +57,13 @@ def send_email(mail_to:str, subject:str, content:str, mail_host: str = None, mai
     msg_string = msg.as_string()
     for att in attachments:
         msg.add_header('Content-Disposition', 'attachment', filename=att)
-    print(f"Send email to {mail_to}")
     
     context = ssl.create_default_context()
     try:
-        with smtplib.SMTP_SSL(mail_host, mail_port, context=context) as server:
+        with smtplib.SMTP(mail_host, mail_port) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
             if debug: server.set_debuglevel(1) # debug mode
             server.login(mail_from, mail_pw)
             server.sendmail(from_addr=mail_from, 
