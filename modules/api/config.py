@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     
     class Config:
-        env_file = "./modules/api/.env"
+        env_file = "./modules/api/conf/.env"
         env_file_encoding = "utf-8"
         
 settings = Settings()

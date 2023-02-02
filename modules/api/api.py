@@ -51,7 +51,7 @@ models.Base.metadata.create_all(bind=engine)
 
 DEFAULT_CREDITS = settings.DEFAULT_CREDITS                     
 CREDITS_PER_IMAGE = settings.CREDITS_PER_IMAGE
-with open('./modules/api/configs.json', 'r') as f:
+with open('./modules/api/conf/config.json', 'r') as f:
     IMEZY_CONFIG = json.load(f)
 import piexif
 import piexif.helper

@@ -87,9 +87,9 @@ def refresh_token_auth(token: str = Depends(oauth2_bearer)):
         raise exceptions.refresh_token_expired_exception()
     
 def create_access_token(email: str, user_id: int, verified: bool = False,
-                    expires_delta: Optional[timedelta] = ACCESS_TOKEN_EXPIRES):
+                    expires_delta: Optional[int] = ACCESS_TOKEN_EXPIRES):
     to_encode = {"email": email, "user_id": user_id, "verified": verified}
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.utcnow() + timedelta(hours=expires_delta) # 2 hours
         
     # update subject expire time and if it's access token
     to_encode.update({"exp": expire, "type": "access"})
@@ -98,9 +98,9 @@ def create_access_token(email: str, user_id: int, verified: bool = False,
 
 # refresh token expires in 1 months
 def create_refresh_token(email: str, user_id: int,
-                    expires_delta: Optional[timedelta] = REFRESH_TOKEN_EXPIRES):
+                    expires_delta: Optional[int] = REFRESH_TOKEN_EXPIRES):
     to_encode = {"email": email, "user_id": user_id}
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.utcnow() + timedelta(days=expires_delta) # 1 months
     
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY_REFRESH, algorithm=ALGORITHM_ACCESS)
