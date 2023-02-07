@@ -93,8 +93,9 @@ def toss_confirm(toss_request: TossConfirmRequest, db: Session, email:str):
     res = conn.getresponse()
     data = res.read()
     
-    print(data.decode("utf-8"))
+    # WRONG_CODE = {"INVALID_API_KEY", }
     
+    print(data.decode("utf-8"))
     response = json.loads(data.decode("utf-8"))
     
     payment_history_db = PaymentHistoryDB()

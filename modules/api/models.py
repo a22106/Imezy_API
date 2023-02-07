@@ -520,6 +520,8 @@ class StylesDB(Base):
     show = Column(Boolean, default=True)
     # black background image is default
     image = Column(String, default="black" )
+    subject = Column(String, default="person")
+    gen = Column(String, default="t2i")
     
 
 class MemoryResponse(BaseModel):
