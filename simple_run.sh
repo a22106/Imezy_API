@@ -1,0 +1,1 @@
+python webui.py --listen --cors-allow-origins "*" --api --enable-insecure-extension-access

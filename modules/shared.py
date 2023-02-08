@@ -517,6 +517,11 @@ class Options:
         return super(Options, self).__setattr__(key, value)
 
     def __getattr__(self, item):
+        
+        # delete attribute 'always_discard_next_to_last_sigma' in the value item
+        if item == 'always_discard_next_to_last_sigma':
+            return False
+        
         if self.data is not None:
             if item in self.data:
                 return self.data[item]

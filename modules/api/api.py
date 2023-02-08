@@ -8,6 +8,7 @@ import uvicorn
 from threading import Lock
 from io import BytesIO
 from datetime import datetime, timedelta
+import sys
 
 from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
@@ -46,6 +47,9 @@ from .auth import *
 from .logs import print_message
 from .config import settings
 from . import utils as api_utils
+
+# print python interpreter path
+print("Python interpreter path: " + sys.executable)
 
 models.Base.metadata.create_all(bind=engine)
 
