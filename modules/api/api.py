@@ -576,30 +576,35 @@ class Api:
             return user_info
         raise exceptions.get_user_not_found_exception()
 
-    def read_user_info(self, user: dict = Depends(access_token_auth),
-                         db: Session = Depends(get_db)):
-        authenticated_access_token_check(user)
+    def read_user_info(self, auth: dict = Depends(access_token_auth),
+                        db: Session = Depends(get_db)):
+        authenticated_access_token_check(auth)
         
+        # Get user info from database.
         try:
-            user_info = db.query(models.UsersDB).filter(models.UsersDB.email == user["email"]).first().__dict__
+            user_info = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().__dict__
         except AttributeError:
-            raise HTTPException(status_code=404, detail=f"User not found with email {user['email']}")
+            raise HTTPException(status_code=404, detail=f"User not found with email {auth['email']}")
         
-        del user_info['hashed_password'], user_info['is_admin'], user_info['_sa_instance_state']
+        # Delete sensitive information that should not be returned.
+        del user_info['hashed_password'], user_info['_sa_instance_state']
         
         
+        # Get user credits from database.
         credits_db= db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first()
         if credits_db is None:
             user_info['credits'] = 0
         else:
             user_info['credits'] = credits_db.credits
             
+        # Get user verified status from database.
         if (verified_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
             user_info['verified'] = False
         else:
             user_info['verified'] = verified_db.verified
         print_message(f'Read user info: {user_info["email"]}')
         return user_info
+    
 
     def authenticate_user(self, email, password, db):
         user_db = db.query(models.UsersDB)\
