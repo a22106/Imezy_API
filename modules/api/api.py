@@ -14,15 +14,11 @@ from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
 
 from secrets import compare_digest
-from fastapi_jwt_auth import AuthJWT
-from fastapi_jwt_auth.exceptions import AuthJWTException
 
 import modules.shared as shared
-from modules import sd_samplers, deepbooru, sd_hijack, images, scripts, ui, postprocessing
+from modules import sd_samplers, deepbooru, sd_hijack, postprocessing
 from modules.api.models import *
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img, process_images
 from modules.textual_inversion.textual_inversion import create_embedding, train_embedding
@@ -33,9 +29,8 @@ from modules.sd_models import checkpoints_list
 from modules.sd_models_config import find_checkpoint_config_near_filename
 from modules.realesrgan_model import get_realesrgan_models
 from modules import devices
-from typing import List, Union
+from typing import List
 
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
