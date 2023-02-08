@@ -542,6 +542,14 @@ input[type="range"]{
 }
 
 #quicksettings {
+    gap: 0.4em;
+}
+
+#quicksettings > div{
+    border: none;
+    background: none;
+    flex: unset;
+    gap: 0.5em;
     width: fit-content;
 }
 
