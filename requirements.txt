@@ -33,6 +33,7 @@ psutil
 email-validator
 py3DNS
 clip
+blendmodes
 
 fastapi_jwt_auth
 fastapi_mail
