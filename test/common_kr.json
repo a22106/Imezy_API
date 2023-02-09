@@ -1,0 +1,469 @@
+
+
+{
+    "landing":{
+        "quote":"Imagine and generate your own images!"
+        
+    },
+    "commonErrors":{
+        "server":"서버에서 오류가 발생했습니다. 다시 시도해주세요.",
+        "unknown":"뭔가 잘못된 것 같습니다. 다시 시도해주세요.",
+        "session":{
+        "top":"세션 타임아웃",
+        "message":"세션이 종료되었습니다. 다시 로그인해주세요."
+        },
+        "notVerified":"이미지를 생성하기 전에 이메일을 확인해주세요.",
+        "notEnoughCredits":{
+        "message":"크래딧이 부족합니다",
+        "description":"이미지를 생성하기에 크래딧이 부족합니다. 크래딧을 구입해주세요."
+        }
+    },
+    "buttons":{
+        "generate":"이미지 생성",
+        "suggestion":"프리셋",
+        "prompt":"입력값",
+        "generating":"생성중..."
+    },
+    "navbar":{
+        "Generate Images":"Generate Images",
+        "Upscaler":"Upscaler",
+        "dropdown":{
+            "credits":"Credits",
+            "more-credits":"Get More Credits",
+            "profile":"My profile/My gallary",
+            "about":"About ImEzy",
+            "feedback":"Feedback/Support",
+            "terms":"Terms of service",
+            "logout":"Log out",
+            "text":"Generate with text",
+            "text+img":"Generate with base image"
+        },
+        "login":"Sign in",
+        "signup":"Sign up",
+        "notVerified":"Your account email is not verified. Please verify it.",
+        "click":"Click here"
+
+    },
+    "generate-page":{
+        "tab-menu":{
+            "i2i":"Text + Image",
+            "t2i":"Text"
+        },
+        "warning": {
+            "noimage": "먼저 이미지를 업로드하세요.",
+            "notuser": "먼저 로그인해주세요."
+        },
+        "upload": {
+            "title": "이미지 업로드",
+            "subtitle": "PNG, JPG 등 이미지 파일",
+            "placeholder": "파일을 드래그하거나 여기를 클릭하여 업로드하세요."
+        },
+        "configuration":{
+            "title":"Your text prompt",
+            "restore":{
+                "title":"얼굴 복원",
+                "tooltip":""
+
+            },
+            "denoising":{
+                "title":"Denoising",
+                "tooltip":"More denoising less your image looks similar to base image."
+
+            },"seed":{
+                "title":"시드 값",
+                "tooltip":""
+
+            },
+            "sampler-options":{
+                "title":"생성 Sampler",
+                "tooltip":""
+
+            },"model":{
+                "title":"Model",
+                "tooltip":""
+
+            },
+            "resolution":{
+                "small":"Small",
+                "medium":"Medium",
+                "title":"이미지 해상도",
+                "tooltip":"이미지의 높이와 너비",
+                "select":"해상도를 선택하세요"
+            },
+            "negative":{
+                "title":"Negative Prompt",
+                "placeholder":"여기에 표시하지 않고 싶은 것을 입력하세요",
+                "tooltip":"생성할 사진에 표시하지 않고 싶은 요소를 입력하세요 ex) bad quality, dog"
+            },
+            "image-number":{
+                "title":"생성 이미지 수",
+                "tooltip":"생성하고싶은 이미지 수를 조정하세요, 기본 이미지당 10 크래딧 소모",
+                "credits":"credits"
+            },
+            "weight":{
+                "title":"가중치",
+                "tooltip":"범위: 1-70"
+            },
+            "Scale":{
+                "title":"Scale",
+                "tooltip":"범위: 1-10, 0.5씩 조절"
+            }
+            
+
+        }
+
+    },
+    "upscaler":{
+        "upload": {
+            "title": "이미지 업로드",
+            "subtitle": "PNG, JPG 등 이미지 파일",
+            "placeholder": "파일을 드래그하거나 여기를 클릭하여 업로드하세요."
+        },
+        "upscaler-type":{
+            "title":"Upscaler",
+            "type-upscaler":"Upscaler",
+            "type-colorize":"Colorize"
+        },
+        "resize":"Resize",
+        "weight":"Weight"
+    },
+    "purchase":{
+        "title":"크래딧 구매",
+        "plans":{
+            "standard":{
+                "navbutton":"Standard Plans",
+                "title":"구독권 구매",
+                "subtitle":"Choose the plan that works for you.",
+                "choose":"Choose",
+                "date":{
+                    "month":"월",
+                    "months":"월",
+                    "year":"년"
+                }
+
+            },
+            "paints":{
+                "navbutton":"Buy Paints Plans",
+                "options":"Purchase Options",
+                "select":"Select Options",
+                "paints":"Paints"
+            }
+        }
+        
+    },
+    "lg-profile":{
+      "sidebar":{
+        "title":"My Profile",
+        "home":"Home",
+        "credits":"Credits",
+        "signout":"Sign out",
+        "settings":"Settings",
+        "username":"User name",
+        "password":"Password",
+        "email":"E-mail",
+        "notVerified":"Not Verified",
+        "payments":"Payments"
+      },
+      "main":{
+        "display":"Display",
+        "images":"Images",
+        "prompt":"Prompt",
+        "created":"Created",
+        "load":"Load more",
+        "notavailable":"This user hasn`t generated any images yet.",
+        "delete":"Are you sure to delete this image?"
+      }
+      
+    },
+    "lg-payments":{
+        "description":"Description",
+        "date":"Date",
+        "total":"Total",
+        "method":"Payment Method",
+        "reciept":"Reciept",
+        "cancel":"Cancel Payment",
+        "cancel-btn":"Cancel" 
+    },
+  
+    "settings":{
+        "username":{
+            "title":"Settings",
+            "subtitle":"Please correct the information",
+            "myimage":"My Image",
+            "username":"User name",
+            "exists":"The selected user name already exists. Please change to a different user name.",
+            "short":"Username must be at least 4 characters long.",
+            "buttons":{
+                "save":"Save",
+                "cancel":"Cancel"
+            },
+            "updated":"Username updated!"
+           
+        },
+        "password":{
+            "title":"Settings",
+            "subtitle":"Please correct the information",
+            "current":"Current Password",
+            "new":"New Password",
+            "confirm":"Confirm Password",
+            "required":"This field is required",
+            "notmatch":"Passwords must match",
+            "wrong-old":"Current Password is not correct! Try again.",
+            "password-contains":"Password must contain at least 1 special charecter or number.",
+            "min":"Must be at least 8 charecters",
+            "max":"Passord shouldn`t contain more than 16 charecters",
+            "save":"Save",
+            "cancel":"Cancel",
+            "inValid":"Please fill form.",
+            "success":"Password updated!"
+            
+        },
+        "email":{  
+            "title":"Settings",
+            "subtitle":"Please correct the information",
+            "new-email":"New Email",
+            "confirm-email":"Confirm Email",
+            "auth":"Authentication number",
+            "buttons":{
+                "send":"Send",
+                "resend":"Resend",
+                "check":"check",
+                "save":"Save",
+                "cancel":"Cancel"
+            },
+            "code-send":"Authentication code has been sent.",
+            "no-code":"Didn't you get the authentication number? Please press the Resend button.",
+            "success":"Authentication succeeded.",
+            "fail":"The authentication number is wrong. Please enter it again. ",
+            "formInvalid":"Please fill form properly!",
+            "no-check":"Verification code is not correct! Please try again.",
+            "notVerified":"Email is not verified!",
+            "updated":"The email address is updated!",
+            "exists":"The new email address already exists. Please change to a different email.",
+            "verified":"Email is verified",
+            "expired":"Verification code expired.Please send again."
+
+
+
+
+        }
+    },
+    "feedback":{
+        "title":"Feedback and Support",
+        "subtitle":"Send us an email",
+        "enquiry":"Enquiry Type",
+        "feedback":"Feedback",
+        "support":"Support",
+        "general":"General",
+        "email":"Email",
+        "subject":{
+            "title":"Subject",
+            "placeholder":"-- Please Select --",
+            "general":"General Feedback",
+            "feature":"Feature request",
+            "reporting":"Reporting system bugs",
+            "Logging":"Logging in support",
+            "Creation":"Creation issues/questions",
+            "Credits":"Credits/Subscription queries",
+            "Print":"Print orders",
+            "Account":"Account questions",
+            "Art":"Art Ownership / Copyright / Commercial use",
+            "Other":"Other questions"
+        },
+        "message":"Message",
+        "send":"Send",
+        "sending":"Sending"
+
+    
+    } , 
+    "sm-profile":{
+        "paints":"Paints",
+        "gallary":"My Gallary",
+        "settings":"Settings",
+        "g-images":"Gallary image(s)",
+        "delete":"Are you sure to delete this image?",
+        "notVerified":"Not Verified",
+        "notavailable":"This user hasn`t generated any images yet."
+        
+    },
+    "sm-payments":{
+        "title":"Payments",
+        "description":"Name",
+        "date":"Date",
+        "total":"Total",
+        "method":"Method",
+        "reciept":"Reciept",
+        "cancel":"Cancel",
+        "others":"Others"
+    },
+    "sm-settings":{
+        "title":"Settings",
+        "security":{
+            "title":"Security",
+            "subtitle":"username, password, e-mail"
+        },
+        "terms":"Terms of service",
+        "personal":"Personal Information",
+        "business":"Business information"
+    },
+    "sm-security":{
+        "title":"Security",
+        "username":{
+            "success":"Username updated successfully.",
+            "title":"User name",
+            "subtitle":"Change username",
+            "image":"Profile image",   
+            "exists":"This user name already exists. Please change to a different user name.",
+            "short":"Username must be at least 4 characters long.",
+            "placeholder":"Byeong-gong",
+            "buttons":{
+                "save":"Save",
+                "cancel":"Cancel"
+            }
+            
+
+        },
+        "password":{
+            "title":"Password",
+            "subtitle":"Change password",
+            "current":"Current Password",
+            "new":"New Password",
+            "confirm":"Confirm Password",
+            "required":"This field is required",
+            "notmatch":"Passwords must match",
+            "wrong-old":"Current password is not correct! Try again.",
+            "password-contains":"Password must contain at least 1 special charecter or number.",
+            "min":"Must be at least 8 charecters",
+            "buttons":{
+                "save":"Save",
+                "cancel":"Cancel"
+            },
+            "max":"Passord shouldn`t contain more than 16 charecters",
+            "success":"Password for {{email}} updated."
+        },
+        "email":{
+            "title":"E-mail",
+            "subtitle":"Change e-mail",
+            "new-email":"New Email",
+            "confirm-email":"Confirm Email",
+            "auth":"Authentication number",
+            "required":"This field is required",
+            "nomatch":"Emails must match",
+            "valid":"Email should be valid email!",
+            "buttons":{
+                "send":"Send",
+                "resend":"Resend",
+                "check":"check",
+                "save":"Save",
+                "cancel":"Cancel"
+            },
+            "code-send":"Authentication code has been sent to new email address.",
+            "no-code":"Didn't you get the authentication number? Please press the Resend button.",
+            "success":"Authentication succeeded.",
+            "fail":"The authentication number is wrong. Please enter it again. ",
+            "formInvalid":"Please fill form properly!",
+            "code-expired":"erification code is expired please send code again.",
+            "verified":"Email is verified",
+            "notVerified":"Email is not verified!",
+            "exists":"The new email address already exists. Please change to a different email.",
+            "updated":"The email address is updated!"
+
+            
+        }
+    },
+    "footer":{
+        "representetive":"Representetive",
+        "business-number":"Business registration number",
+        "email":"E-mail",
+        "privacy":"Privacy and Policy",
+        "generate":"Generate Images",
+        "upscaler":"Upscaler", 
+        "reserved":"Ⓒ Aivill Co. all rights reserved"
+    },
+    "login":{
+        "welcome":"Welcome Back",
+        "enterPsw":"Enter your password",
+        "success":"Successfully logged in.",
+        "email":{
+            "title":"Email",
+            "placeholder":"Enter your email",
+            "required":"Email is required!",
+            "wrong":"Email or password is wrong!",
+            "valid":"Email should be valid email!",
+            "edit":"Edit"
+        },
+        "continue":"Continue",
+        "no-account":"Don`t you have an account?",
+        "signup":"Sign up",
+        "or":"or",
+        "password":{
+            "title":"Password",
+            "placeholder":"Enter your password",
+            "required":"Password is required"
+        },
+        "forgotPsw":"Did you forget your password?",
+        "login-with-google":"Sign in with google",
+        "login-with-naver":"Log in with Naver",
+        "login-with-kakao":"Login with Kakao"
+    },  
+    "signup":{
+        "create":"Create your account",
+        "success":"Successfully created",
+        "created":"Your account has been created successfully.",
+        "email":{
+            "title":"Email",
+            "placeholder":"Enter your email",
+            "required":"Email is required!",
+            "edit":"Edit",
+            "valid":"Email should be valid email!",
+            "inuse":"This '{{email}}' account is already in use! Please try again with different email account."
+        },
+        "username":{
+            "title":"Username",
+            "exists":"The selected user name already exists. Please change to a different user name.",
+            "required":"Username is required!",
+            "placeholder":"Enter your username",
+            "min":"Username must be at least 4 charecters.",
+            "max":"Username characters must be less than 16.",
+            "inuse":"This '{{username}}' username  is already in use! Please try again with different username."
+        },
+        "continue":"Continue",
+        "account":"Already have an account?",
+        "login":"Log in",
+        "or":"or",
+        "password":{
+            "password-info":"Your password must contain:",
+            "title":"Password",
+            "placeholder":"Enter your password",
+            "required":"Password is required",
+            "min":"At least 8 charecters.",
+            "max":"Maximum 16 charecters",
+            "password-contains":"Password must contain at least 1 special charecter or number."
+        }
+    },
+    "successfull":{
+        "completed":"Payment completed",
+        "failedTitle":"Payment Error",
+        "subtitle":"Your payment has been processed successfully. Payment details can be found on",
+        "highlighted":"My Page > Payment Details.",
+        "failed":"The purchase was not completed due to an error. Please try again later or contact",
+        "support":"customer support",
+        "info":"Payment Information",
+        "order":"Order amount:",
+        "total":"Total payment amount:",
+        "home":"Home",
+        "return":"Return",
+        "reserved":"Ⓒ Aivill Co. all rights reserved"
+    },
+    "verification":{
+        "title":"Verify your email",
+        "message":"We have sent an email to {{email}} email address. Please enter 6 digits.",
+        "submit":"Submit" ,
+        "send":"Send Verification",
+        "sent":"Verification code has been sent.",
+        "verified":"Email is verified.",
+        "expiried":"verification code is expired please send code again.",
+        "wrong":"verification code is not correct.",
+        "resend":"Resend Verification" 
+    } 
+}

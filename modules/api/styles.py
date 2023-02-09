@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-from typing import List, Union
-
 from . import models
 from .config import settings
 
@@ -28,11 +26,15 @@ def read_modifier(db, mod: int = None):
         modifier = db.query(models.ModifiersDB).filter(models.ModifiersDB.modifier == mod_category).all()
         return modifier
 
-def read_styles(db):
+def read_presets(db, preset: str = None):
     """
-    Read styles from database
+    Read presets from database
     args:
         db: database session
     """
-    styles = db.query(models.StylesDB).all()
-    return styles
+    if preset:
+        preset = db.query(models.PresetsDB).filter(models.PresetsDB.name == preset).first()
+        return preset
+    else:
+        presets = db.query(models.PresetsDB).all()
+        return presets

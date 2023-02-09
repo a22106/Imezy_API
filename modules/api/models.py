@@ -108,13 +108,21 @@ class PydanticModelGenerator:
 StableDiffusionTxt2ImgProcessingAPI = PydanticModelGenerator(
     "StableDiffusionProcessingTxt2Img",
     StableDiffusionProcessingTxt2Img,
-    [{"key": "sampler_index", "type": str, "default": "Euler"}, {"key": "script_args", "type": list, "default": []}]
+    [{"key": "sampler_index", "type": str, "default": "Euler a"}, 
+     {"key": "script_args", "type": list, "default": []}, 
+     {"key": "preset", "type": int, "default": 0}]
 ).generate_model()
 
 StableDiffusionImg2ImgProcessingAPI = PydanticModelGenerator(
     "StableDiffusionProcessingImg2Img",
     StableDiffusionProcessingImg2Img,
-    [{"key": "sampler_index", "type": str, "default": "Euler"}, {"key": "init_images", "type": list, "default": None}, {"key": "denoising_strength", "type": float, "default": 0.75}, {"key": "mask", "type": str, "default": None}, {"key": "include_init_images", "type": bool, "default": False, "exclude" : True}, {"key": "script_args", "type": list, "default": []}]
+    [{"key": "sampler_index", "type": str, "default": "Euler a"}, 
+     {"key": "init_images", "type": list, "default": None}, 
+     {"key": "denoising_strength", "type": float, "default": 0.75}, 
+     {"key": "mask", "type": str, "default": None}, 
+     {"key": "include_init_images", "type": bool, "default": False, "exclude" : True}, 
+     {"key": "script_args", "type": list, "default": []},
+     {"key": "preset", "type": str, "default": "none"}]
 ).generate_model()
 
 class TextToImageResponse(BaseModel):
@@ -503,8 +511,8 @@ class PaymentHistoryDB(Base):
     updated = Column(DateTime, default=datetime.now)
     response = Column(JSON, nullable=False)
     
-class StylesDB(Base):
-    __tablename__ = "styles"
+class PresetsDB(Base):
+    __tablename__ = "presets"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -523,7 +531,6 @@ class StylesDB(Base):
     subject = Column(String, default="person")
     gen = Column(String, default="t2i")
     
-
 class MemoryResponse(BaseModel):
     ram: dict = Field(title="RAM", description="System memory stats")
     cuda: dict = Field(title="CUDA", description="nVidia CUDA memory stats")

@@ -157,7 +157,7 @@ class Api:
         self.app = app
         self.queue_lock = queue_lock
         api_middleware(self.app) # 이메일 인증이 필요한 기능은 ## 표시
-        self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
+        self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=models.TextToImageResponse)
         self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=models.TextToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=models.ImageToImageAuthResponse) ##
@@ -222,7 +222,7 @@ class Api:
         self.add_api_route("/style/modifier/{modifier}", self.modifiers_read, methods=["GET"])
         # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
-        self.add_api_route("/style/style", self.styles_read, methods=["GET"])
+        self.add_api_route("/style/presets", self.presets_read, methods=["GET"])
         
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
         self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
@@ -847,6 +847,16 @@ class Api:
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         # check auth email and if the user has enough credits
         
+        user_prompt = txt2imgreq.prompt if txt2imgreq.prompt is not None else ""
+        user_negative_prompt = txt2imgreq.negative_prompt if txt2imgreq.negative_prompt is not None else ""
+        
+        # call preset
+        preset_db = db.query(models.PresetsDB).filter(models.PresetsDB.id == txt2imgreq.preset).first()
+        preset_prompt = preset_db.prompt if preset_db.prompt is not None else ""
+        preset_negative_prompt = preset_db.negative_prompt if preset_db.negative_prompt is not None else ""
+        
+        txt2imgreq.prompt = ', '.join([user_prompt, preset_prompt])
+        txt2imgreq.negative_prompt = ', '.join([user_negative_prompt, preset_negative_prompt])
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
         if user_db is None:
             print_message("user is None exception")
@@ -859,10 +869,17 @@ class Api:
         
         response = self.text2imgapi(txt2imgreq)
         response_json = json.loads(response.json())
+        response_json["parameters"]["prompt"] = user_prompt
+        response_json["parameters"]["negative_prompt"] = user_negative_prompt
+        response_json["info"]["prompt"] = user_prompt
+        response_json["info"]["negative_prompt"] = user_negative_prompt
+        _, _, generation_params_text = response_json["info"]["infotexts"][0].split("\n")
+        response_json["info"]["infotext"] = f"{user_prompt}\n{user_negative_prompt}\n{generation_params_text}"
+        
+        del response_json["info"]["all_prompts"], response_json["info"]["all_negative_prompts"]
         
         # 이미지 압축 저장 to webp
         response_images = response_json["images"]
-        
         
         # 이미지 생성 저장(json)
         now = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -888,7 +905,7 @@ class Api:
         
         print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_credit_inc}, generated images: {created_images_num}")
         
-        response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
+        response = models.TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
                                              credits=user_db.credits)
 
@@ -1322,7 +1339,7 @@ class Api:
     
         return response
     
-    def styles_read(self, db: Session = Depends(get_db)):
-        print_message("Reading styles")
-        response = styles.read_styles(db)
+    def presets_read(self, db: Session = Depends(get_db)):
+        print_message("Reading presets")
+        response = styles.read_presets(db)
         return response
