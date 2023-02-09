@@ -14,15 +14,11 @@ from gradio.processing_utils import decode_base64_to_file
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from jinja2 import Environment, select_autoescape, PackageLoader, FileSystemLoader
 
 from secrets import compare_digest
-from fastapi_jwt_auth import AuthJWT
-from fastapi_jwt_auth.exceptions import AuthJWTException
 
 import modules.shared as shared
-from modules import sd_samplers, deepbooru, sd_hijack, images, scripts, ui, postprocessing
+from modules import sd_samplers, deepbooru, sd_hijack, postprocessing
 from modules.api.models import *
 from modules.processing import StableDiffusionProcessingTxt2Img, StableDiffusionProcessingImg2Img, process_images
 from modules.textual_inversion.textual_inversion import create_embedding, train_embedding
@@ -33,9 +29,8 @@ from modules.sd_models import checkpoints_list
 from modules.sd_models_config import find_checkpoint_config_near_filename
 from modules.realesrgan_model import get_realesrgan_models
 from modules import devices
-from typing import List, Union
+from typing import List
 
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
@@ -162,7 +157,7 @@ class Api:
         self.app = app
         self.queue_lock = queue_lock
         api_middleware(self.app) # 이메일 인증이 필요한 기능은 ## 표시
-        self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=TextToImageResponse)
+        self.add_api_route("/sdapi/v1/txt2img", self.text2imgapi, methods=["POST"], response_model=models.TextToImageResponse)
         self.add_api_route("/sdapi/v1/txt2img-auth", self.text2imgapi_auth, methods=["POST"], response_model=models.TextToImageAuthResponse) ##
         self.add_api_route("/sdapi/v1/img2img", self.img2imgapi, methods=["POST"], response_model=ImageToImageResponse)
         self.add_api_route("/sdapi/v1/img2img-auth", self.img2imgapi_auth, methods=["POST"], response_model=models.ImageToImageAuthResponse) ##
@@ -886,6 +881,16 @@ class Api:
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         # check auth email and if the user has enough credits
         
+        user_prompt = txt2imgreq.prompt if txt2imgreq.prompt is not None else ""
+        user_negative_prompt = txt2imgreq.negative_prompt if txt2imgreq.negative_prompt is not None else ""
+        
+        # call preset
+        preset_db = db.query(models.PresetsDB).filter(models.PresetsDB.id == txt2imgreq.preset).first()
+        preset_prompt = preset_db.prompt if preset_db.prompt is not None else ""
+        preset_negative_prompt = preset_db.negative_prompt if preset_db.negative_prompt is not None else ""
+        
+        txt2imgreq.prompt = ', '.join([user_prompt, preset_prompt])
+        txt2imgreq.negative_prompt = ', '.join([user_negative_prompt, preset_negative_prompt])
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
         if user_db is None:
             print_message("user is None exception")
@@ -898,10 +903,17 @@ class Api:
         
         response = self.text2imgapi(txt2imgreq)
         response_json = json.loads(response.json())
+        response_json["parameters"]["prompt"] = user_prompt
+        response_json["parameters"]["negative_prompt"] = user_negative_prompt
+        response_json["info"]["prompt"] = user_prompt
+        response_json["info"]["negative_prompt"] = user_negative_prompt
+        _, _, generation_params_text = response_json["info"]["infotexts"][0].split("\n")
+        response_json["info"]["infotext"] = f"{user_prompt}\n{user_negative_prompt}\n{generation_params_text}"
+        
+        del response_json["info"]["all_prompts"], response_json["info"]["all_negative_prompts"]
         
         # 이미지 압축 저장 to webp
         response_images = response_json["images"]
-        
         
         # 이미지 생성 저장(json)
         now = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -927,7 +939,7 @@ class Api:
         
         print_message(f"User {auth['email']} is generating an image. Credits left: {user_db.credits}, Credits used: {-updateing_credit_inc}, generated images: {created_images_num}")
         
-        response = TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
+        response = models.TextToImageAuthResponse(images=response_images, images_compressed=response_json["images_compressed"], 
                                              parameters=response_json["parameters"], info=response_json["info"], 
                                              credits=user_db.credits)
 
@@ -1362,6 +1374,6 @@ class Api:
         return response
     
     def presets_read(self, db: Session = Depends(get_db)):
-        print_message("Reading styles")
-        response = styles.read_styles(db)
+        print_message("Reading presets")
+        response = styles.read_presets(db)
         return response
