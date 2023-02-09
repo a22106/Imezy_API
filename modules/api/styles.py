@@ -34,5 +34,5 @@ def read_styles(db):
     args:
         db: database session
     """
-    styles = db.query(models.StylesDB).all()
-    return styles
+    presets = db.query(models.PresetsDB).all()
+    return presets

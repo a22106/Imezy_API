@@ -503,8 +503,8 @@ class PaymentHistoryDB(Base):
     updated = Column(DateTime, default=datetime.now)
     response = Column(JSON, nullable=False)
     
-class StylesDB(Base):
-    __tablename__ = "styles"
+class PresetsDB(Base):
+    __tablename__ = "presets"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -522,6 +522,7 @@ class StylesDB(Base):
     image = Column(String, default="black" )
     subject = Column(String, default="person")
     gen = Column(String, default="t2i")
+    hide = Column(Boolean, default=False)
     
 
 class MemoryResponse(BaseModel):

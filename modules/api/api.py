@@ -195,6 +195,7 @@ class Api:
 
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login, methods=["POST"])
+        # self.add_api_route("/user/kakaologin", self.kakaologin, methods=["POST"])
         # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
         self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"]) # reissue access token
         self.add_api_route("/user/logout", self.logout, methods=["POST"]) # logout
@@ -227,7 +228,7 @@ class Api:
         self.add_api_route("/style/modifier/{modifier}", self.modifiers_read, methods=["GET"])
         # self.add_api_route("/style/modifier/create", self.create_modifier, methods=["POST"])
         # self.add_api_route("/style/modifier/update/{modifier_id}", self.update_modifier_by_id, methods=["PUT"])
-        self.add_api_route("/style/style", self.styles_read, methods=["GET"])
+        self.add_api_route("/style/presets", self.presets_read, methods=["GET"])
         
         self.add_api_route("/payment/orderNames", self.get_order_names, methods=["GET"])
         self.add_api_route("/payment/orderNames/credits", self.get_order_names_credits, methods=["GET"])
@@ -652,6 +653,39 @@ class Api:
             "access_token": access_token, 
             "refresh_token": refresh_token, 
             "token_type": "bearer"}
+        
+    # def kakaologin(self, db: Session = Depends(get_db), auth: dict = Depends(kakao_auth)):
+    #     return 
+    #     authenticated_kakao_check(auth)
+        
+    #     if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()) is None:
+    #         raise exceptions.token_exception()
+        
+    #     if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
+    #         verified = False
+    #     else:
+    #         verified = verify_email_db.verified
+        
+    #     access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
+    #     refresh_token = create_refresh_token(email=user_db.email, user_id=user_db.id)
+    #     former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
+        
+    #     # check if user has a refresh token is outdated
+    #     if not former_rtoken:
+    #         new_rtoken = models.RefreshTokenDB()
+    #         new_rtoken.token = refresh_token
+    #         new_rtoken.email = user_db.email
+            
+    #         db.add(new_rtoken)
+    #         db.commit()
+    #     else:
+    #         former_rtoken.token = refresh_token
+    #         db.commit()
+        
+    #     return {
+    #         "access_token": access_token, 
+    #         "refresh_token": refresh_token, 
+    #         "token_type": "bearer"}
     
     # get new access token with refresh token
     def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refresh_token_auth)):
@@ -1327,7 +1361,7 @@ class Api:
     
         return response
     
-    def styles_read(self, db: Session = Depends(get_db)):
+    def presets_read(self, db: Session = Depends(get_db)):
         print_message("Reading styles")
         response = styles.read_styles(db)
         return response
