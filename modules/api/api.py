@@ -200,6 +200,7 @@ class Api:
         self.add_api_route("/user/update_password", self.update_password, methods=["PUT"], response_model=UpdatePasswordResponse)
         self.add_api_route("/user/update_email", self.update_email, methods=["PUT"])
         self.add_api_route("/user/update_username", self.update_username, methods=["PUT"])
+        # self.add_api_route("/user/save_profile_image", self.save_profile_image, methods=["POST"])
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
@@ -308,10 +309,12 @@ class Api:
             
             try:
                 # 이미지 저장된 json 파일 읽기
-                with open(f"generated/{IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)]}/{auth['email']}/{updated}.json", "r") as f:
+                gen = IMEZY_CONFIG['imezy_type1'][str(row.imezy_type)] # t2i or i2i
+                with open(f"generated/{gen}/{auth['email']}/{updated}.json", "r") as f:
                     data = json.load(f)
+                    data["info"]["gen"] = gen
                 if data["images_compressed"]:
-                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images_compressed"] })
+                    response.append({"info": data["info"], "updated": row.updated, "image_id": row.id, "images": data["images_compressed"]})
             except FileNotFoundError:
                 print(f"generated/{auth['email']}/{updated}.json 파일이 없습니다.")
                 continue
@@ -537,6 +540,23 @@ class Api:
         except AttributeError:
             db.rollback()
             raise HTTPException(status_code=500, detail="Could not update username")
+    
+    # def save_profile_image(self, req: models.UploadProfileImageRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    #     authenticated_access_token_check(auth)
+    #     print_message(f"Save profile image user: {auth['email']}")
+        
+    #     user_info = db.query(models.UsersDB).filter(models.UsersDB.id == auth["user_id"]).first()
+    #     if not user_info:
+    #         raise exceptions.get_user_not_found_exception()
+        
+    #     user_info.profile_image = req.image
+    #     try:
+    #         db.commit()
+    #         print_message(f"Profile image updated successfully")
+    #         return {"message": "Profile image updated successfully"}
+    #     except AttributeError:
+    #         db.rollback()
+    #         raise HTTPException(status_code=500, detail="Could not update profile image")
     
     def delete_user_by_id(self, user_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         
@@ -870,7 +890,6 @@ class Api:
             processed = process_images(p)
             shared.state.end()
 
-
         b64images = list(map(encode_pil_to_base64, processed.images))
         b64images_compressed = list(map(convert_img_to_webp, processed.images))
 
@@ -881,16 +900,19 @@ class Api:
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         # check auth email and if the user has enough credits
         
+        # DELETE_PROMPT = ["nude", "naked", "big breast"]
         user_prompt = txt2imgreq.prompt if txt2imgreq.prompt is not None else ""
+        
         user_negative_prompt = txt2imgreq.negative_prompt if txt2imgreq.negative_prompt is not None else ""
         
         # call preset
         preset_db = db.query(models.PresetsDB).filter(models.PresetsDB.id == txt2imgreq.preset).first()
-        preset_prompt = preset_db.prompt if preset_db.prompt is not None else ""
-        preset_negative_prompt = preset_db.negative_prompt if preset_db.negative_prompt is not None else ""
+       
+        prompt_b = preset_db.prompt_b if preset_db.prompt_b is not None else ""
+        negative_prompt_b = preset_db.negative_prompt_b if preset_db.negative_prompt_b is not None else ""
         
-        txt2imgreq.prompt = ', '.join([user_prompt, preset_prompt])
-        txt2imgreq.negative_prompt = ', '.join([user_negative_prompt, preset_negative_prompt])
+        txt2imgreq.prompt = ', '.join([user_prompt, prompt_b])
+        txt2imgreq.negative_prompt = ', '.join([user_negative_prompt, negative_prompt_b])
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
         if user_db is None:
             print_message("user is None exception")

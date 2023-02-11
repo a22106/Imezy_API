@@ -397,6 +397,7 @@ class UsersDB(Base):
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_date = Column(DateTime, default=datetime.now)
+    profile_image = Column(String, default=None)
 
 class CreditsDB(Base):
     __tablename__ = "credits"
@@ -517,8 +518,10 @@ class PresetsDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     name_korean = Column(String)
-    prompt = Column(String, nullable=False)
-    negative_prompt = Column(String, nullable=False)
+    prompt = Column(String)
+    prompt_b = Column(String)
+    negative_prompt = Column(String)
+    negative_prompt_b = Column(String)
     denoising_strength = Column(Float, default=0.4)
     seed = Column(Integer, default=-1)
     cfg_scale = Column(Float, default=8.5)
