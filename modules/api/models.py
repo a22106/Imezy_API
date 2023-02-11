@@ -530,6 +530,7 @@ class PresetsDB(Base):
     image = Column(String, default="black" )
     subject = Column(String, default="person")
     gen = Column(String, default="t2i")
+    hide = Column(Boolean, default=False)
     
 class MemoryResponse(BaseModel):
     ram: dict = Field(title="RAM", description="System memory stats")
