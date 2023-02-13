@@ -898,21 +898,18 @@ class Api:
     def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth, db=db, verify=True)
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
-        # check auth email and if the user has enough credits
         
-        # DELETE_PROMPT = ["nude", "naked", "big breast"]
+        
+        
+        # 프리셋 설정
+        # DB에서 프리셋 설정을 불러와 유저가 입력한 prompt와 db상에서 사전 입력된 base prompt(prompt_b)를 ', '로 합친다. negative prompt도 마찬가지
         user_prompt = txt2imgreq.prompt if txt2imgreq.prompt is not None else ""
-        
         user_negative_prompt = txt2imgreq.negative_prompt if txt2imgreq.negative_prompt is not None else ""
+        txt2imgreq.prompt, txt2imgreq.negative_prompt = styles.load_prompts(db, 
+                                                                            user_prompt = user_prompt, 
+                                                                            user_negative_prompt = user_negative_prompt,
+                                                                            preset =  txt2imgreq.preset)
         
-        # call preset
-        preset_db = db.query(models.PresetsDB).filter(models.PresetsDB.id == txt2imgreq.preset).first()
-       
-        prompt_b = preset_db.prompt_b if preset_db.prompt_b is not None else ""
-        negative_prompt_b = preset_db.negative_prompt_b if preset_db.negative_prompt_b is not None else ""
-        
-        txt2imgreq.prompt = ', '.join([user_prompt, prompt_b])
-        txt2imgreq.negative_prompt = ', '.join([user_negative_prompt, negative_prompt_b])
         user_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == auth["email"]).first()
         if user_db is None:
             print_message("user is None exception")
@@ -1017,6 +1014,13 @@ class Api:
             print_message("user is None exception")
             raise exceptions.get_user_exception()
         created_images_num = int(img2imgreq.n_iter * img2imgreq.batch_size)
+        
+        user_prompt = img2imgreq.prompt if img2imgreq.prompt is not None else ""
+        user_negative_prompt = img2imgreq.negative_prompt if img2imgreq.negative_prompt is not None else ""
+        img2imgreq.prompt, img2imgreq.negative_prompt = styles.load_prompts(db, 
+                                                                    user_prompt = user_prompt, 
+                                                                    user_negative_prompt = user_negative_prompt,
+                                                                    preset =  img2imgreq.preset)
         
         # 유저가 가진 크레딧이 생성할 이미지의 크레딧보다 적으면 에러
         if user_db.credits < created_images_num * CREDITS_PER_IMAGE:
