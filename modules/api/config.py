@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     IMEZY_LOGO_140: str
     IMEZY_LOGO_250: str
     IMEZY_LOGO_IMEZY: str
-
     
     # jwt config
     JWT_ACCESS_KEY: str
@@ -18,6 +17,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str
     JWT_ACCESS_TOKEN_EXPIRE_HOURS: int
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int
+    
+    # API key config
+    KAKAO_REST_API_KEY: str
+    CLIENT_SECRET: str
     
     # email config
     EMAIL_ADMIN_HOST: str

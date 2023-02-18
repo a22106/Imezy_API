@@ -51,7 +51,7 @@ def access_token_auth(token: str = Depends(oauth2_bearer)):
         raise exceptions.access_token_expired_exception()
     
     except JWTError: # 토큰이 유효하지 않은 경우
-        print("Access token is invalid")
+        print_message("Access token is invalid")
         raise exceptions.get_jwt_exception()
     
 def refresh_token_auth(token: str = Depends(oauth2_bearer)):
@@ -95,6 +95,9 @@ def create_access_token(email: str, user_id: int, verified: bool = False,
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY_ACCESS, algorithm=ALGORITHM_ACCESS)
     return encoded_jwt
+
+def verify_kakao_idtoken():
+    pass
 
 # refresh token expires in 1 months
 def create_refresh_token(email: str, user_id: int,

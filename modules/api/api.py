@@ -191,6 +191,9 @@ class Api:
         self.add_api_route("/user/create", self.create_new_user, methods=["POST"])
         self.add_api_route("/user/login", self.login, methods=["POST"])
         self.add_api_route("/user/kakaologin", self.kakaologin, methods=["POST"])
+        # self.add_api_route("/user/kakaologin/callback", self.kakaologin_callback, methods=["GET"])
+        self.add_api_route("/user/kakaologin/refresh", self.kakaologin_refresh, methods=["GET"])
+        self.add_api_route("/user/kakaologin/logout", self.kakaologin_logout, methods=["GET"])
         # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
         self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"]) # reissue access token
         self.add_api_route("/user/logout", self.logout, methods=["POST"]) # logout
@@ -204,6 +207,7 @@ class Api:
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
+        
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
@@ -670,34 +674,13 @@ class Api:
             "token_type": "bearer"}
         
     def kakaologin(self, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
-        if (user_db := db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first()) is None:
-            raise exceptions.token_exception()
+        pass
         
-        if (verify_email_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == auth["email"]).first()) is None:
-            verified = False
-        else:
-            verified = verify_email_db.verified
-        
-        access_token = create_access_token(email=user_db.email, user_id=user_db.id, verified=verified)
-        refresh_token = create_refresh_token(email=user_db.email, user_id=user_db.id)
-        former_rtoken = db.query(models.RefreshTokenDB).filter(models.RefreshTokenDB.email == user_db.email).first()
-        
-        # check if user has a refresh token is outdated
-        if not former_rtoken:
-            new_rtoken = models.RefreshTokenDB()
-            new_rtoken.token = refresh_token
-            new_rtoken.email = user_db.email
-            
-            db.add(new_rtoken)
-            db.commit()
-        else:
-            former_rtoken.token = refresh_token
-            db.commit()
-        
-        return {
-            "access_token": access_token, 
-            "refresh_token": refresh_token, 
-            "token_type": "bearer"}
+    def kakaologin_logout():
+        pass
+    
+    def kakaologin_refresh():
+        pass
         
     
     # get new access token with refresh token
