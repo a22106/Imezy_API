@@ -384,6 +384,10 @@ class AuthSettings(BaseModel):
     ACCESS_TOKEN_EXPIRES_MINUTES = timedelta(hours=24)
     REFRESH_TOKEN_EXPIRES_MINUTES = timedelta(days=30)
 
+class MemoryResponse(BaseModel):
+    ram: dict = Field(title="RAM", description="System memory stats")
+    cuda: dict = Field(title="CUDA", description="nVidia CUDA memory stats")
+
 
 
 # databases
@@ -532,6 +536,10 @@ class PresetsDB(Base):
     gen = Column(String, default="t2i")
     hide = Column(Boolean, default=False)
     
-class MemoryResponse(BaseModel):
-    ram: dict = Field(title="RAM", description="System memory stats")
-    cuda: dict = Field(title="CUDA", description="nVidia CUDA memory stats")
+
+class UsersKakao(BaseModel):
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    # email is foreign key from users table
+    email = Column(String, ForeignKey("users.email"),unique=True, index=True)
+    email_kakao = Column(String, unique=True, index=True, nullable=False)
