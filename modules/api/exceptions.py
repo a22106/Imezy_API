@@ -54,10 +54,10 @@ def get_admin_exception():
     print_message("get_admin_exception", credentials_exception)
     return credentials_exception
 
-def get_jwt_exception():
+def get_jwt_exception(msg: str = "The access token is expired or invalid"):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials. The access token is expired or invalid",
+        detail=f"Could not validate credentials. {msg}",
         headers={"WWW-Authenticate": "Bearer"},
     )
     print_message("get_jwt_exception", credentials_exception)
@@ -159,4 +159,13 @@ def code_exception_exception(exception_code: int):
         headers={"WWW-Authenticate": "Bearer"},
     )
     print_message(f"code exception{' '+exception_type}")
+    return exception
+
+def kakao_login_exception(response):
+    exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail= f"Kakao login exception: {response['msg']}"
+        
+    )
+    print_message(f"Kakao login exception: {response}")
     return exception

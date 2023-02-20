@@ -36,9 +36,9 @@ import sqlalchemy.exc as exc
 from sqlalchemy.orm.exc import FlushError
 
 from .database import engine, get_db
-from . import models, credits, styles
+from . import models, credits, styles, auths, users
 from .users import *
-from .auth import *
+from .auths import *
 from .logs import print_message
 from .config import settings
 from . import utils as api_utils
@@ -192,8 +192,8 @@ class Api:
         self.add_api_route("/user/login", self.login, methods=["POST"])
         self.add_api_route("/user/kakaologin", self.kakaologin, methods=["POST"])
         # self.add_api_route("/user/kakaologin/callback", self.kakaologin_callback, methods=["GET"])
-        self.add_api_route("/user/kakaologin/refresh", self.kakaologin_refresh, methods=["GET"])
-        self.add_api_route("/user/kakaologin/logout", self.kakaologin_logout, methods=["GET"])
+        self.add_api_route("/user/kakaologin/refresh", self.kakaologin_refresh, methods=["POST"])
+        self.add_api_route("/user/kakaologin/logout", self.kakaologin_logout, methods=["POST"])
         # self.add_api_route("/user/get_access_token", self.get_access_token, methods=["GET"])
         self.add_api_route("/user/reissue", self.reissue_access_token, methods=["POST"]) # reissue access token
         self.add_api_route("/user/logout", self.logout, methods=["POST"]) # logout
@@ -207,7 +207,6 @@ class Api:
         self.add_api_route("/user/update/{user_id}", self.update_user_by_id, methods=["PUT"])
         self.add_api_route("/user/delete/{user_id}", self.delete_user_by_id, methods=["DELETE"])
         self.add_api_route("/user/make_admin/{user_id}", self.make_admin, methods=["PUT"])
-        
         
         self.add_api_route("/credits/read/all", self.read_all_creds, methods=["GET"])
         self.add_api_route("/credits/read", self.read_cred_by_id, methods=["GET"])
@@ -357,7 +356,8 @@ class Api:
         print_message(f"Delete image user: {auth['email']}, image_id: {image_id} success")
         return {"detail": f"Delete image user: {auth['email']}, image_id: {image_id} success"}
         
-    def download_image(self, image_id: int, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db), req: DownloadImageRequest = Depends()):
+    def download_image(self, image_id: int, auth: dict = Depends(access_token_auth), 
+                       db: Session = Depends(get_db), req: DownloadImageRequest = Depends()):
         authenticated_access_token_check(auth)
         print_message(f"Download image user: {auth['email']}, image_id: {image_id}")
         
@@ -376,7 +376,8 @@ class Api:
             return HTTPException(status_code=404, detail=f"Download image user: {auth['email']}, image_id: {image_id} {image_updated}.json is not exist on file")
             
         if data["images"]:
-            return {"image_id": image_id, "updated": image_db.updated, "index": req.index, "image": data["images"][req.index]}
+            return {"image_id": image_id, "updated": image_db.updated, 
+                    "index": req.index, "image": data["images"][req.index]}
         
     def email_verification_send(self, req: models.EmailVerificaionSendRequest, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
@@ -604,31 +605,7 @@ class Api:
                         db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         
-        # Get user info from database.
-        try:
-            user_info = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().__dict__
-        except AttributeError:
-            raise HTTPException(status_code=404, detail=f"User not found with email {auth['email']}")
-        
-        # Delete sensitive information that should not be returned.
-        del user_info['hashed_password'], user_info['_sa_instance_state']
-        
-        
-        # Get user credits from database.
-        credits_db= db.query(models.CreditsDB).filter(models.CreditsDB.email == user_info["email"]).first()
-        if credits_db is None:
-            user_info['credits'] = 0
-        else:
-            user_info['credits'] = credits_db.credits
-            
-        # Get user verified status from database.
-        if (verified_db := db.query(models.VerifyEmailDB).filter(models.VerifyEmailDB.email == user_info["email"]).first()) is None:
-            user_info['verified'] = False
-        else:
-            user_info['verified'] = verified_db.verified
-        print_message(f'Read user info: {user_info["email"]}')
-        return user_info
-    
+        return users.read_user_info(auth, db)
 
     def authenticate_user(self, email, password, db):
         user_db = db.query(models.UsersDB)\
@@ -673,15 +650,46 @@ class Api:
             "refresh_token": refresh_token, 
             "token_type": "bearer"}
         
-    def kakaologin(self, db: Session = Depends(get_db), auth: dict = Depends(access_token_auth)):
-        pass
+    def kakaologin(self, db: Session = Depends(get_db), auth: dict = Depends(kakaologin_access)):
+        if 'email_kakao' not in auth.keys(): # 카카오 로그인 실패
+                raise exceptions.kakao_login_exception(auth)
+
+        # 카카오 유저 정보 (email: "123@kakao.com",  "username": "kakao123")
         
-    def kakaologin_logout():
-        pass
-    
-    def kakaologin_refresh():
-        pass
+        if (kakao_user_db := db.query(models.UsersKakaoDB) \
+            .filter(models.UsersKakaoDB.email_kakao == auth["email_kakao"]).first()) is None: # 카카오 유저가 등록되지 않은 경우 신규 등록 후 로그인
+            
+            users.create_user_kakao(auth)
+            
+            new_user = {
+                "username": auth["username"],
+                "email": auth["email_kakao"],
+                "password": None,
+                "is_active": True,
+                "is_admin": False,
+                "type": "kakao",
+            }
+            print(f"create new user: {new_user}")
+            users.create_user(new_user)
         
+        print(f"auth info: {auth}")
+        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email_kakao"]).first()
+        credits_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_db.email).first()
+        return {
+                "detail": "kakao login success",
+                "id": user_db.id,
+                "username": auth["username"],
+                "email": user_db.email,
+                "created_date": user_db.created_date,
+                "credits": credits_db.credits,
+                "verified": True,
+            } 
+            
+    def kakaologin_refresh(self, auth: dict = Depends(kakao_refresh)):
+        return auth
+        
+    def kakaologin_logout(self, auth: dict = Depends(kakao_logout)):
+        return auth
     
     # get new access token with refresh token
     def reissue_access_token(self, db: Session = Depends(get_db), auth: dict = Depends(refresh_token_auth)):
@@ -753,66 +761,8 @@ class Api:
     def create_new_user(self, create_user: CreateUserResponse, db: Session = Depends(get_db)):
         # filter if create_user.email or create_user.username already exists
         print_message(f"Creating a new user. email: {create_user.email}, username: {create_user.username}")
+        return users.create_user(db, create_user)
         
-        is_exist = []
-        is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.username == create_user.username).first())
-        is_exist.append(db.query(models.UsersDB).filter(models.UsersDB.email == create_user.email.lower()).first())
-        if is_exist[0]:
-            print_message(f"The username '{create_user.username}' is already in use")
-            raise HTTPException(status_code=400, detail=f"username", headers={"username": create_user.username})
-        elif is_exist[1]:
-            print_message(f"The email {create_user.email} is already in use")
-            raise HTTPException(status_code=400, detail=f"email", headers={"email": create_user.email})
-        
-        create_user_model = models.UsersDB()
-        create_user_model.email = create_user.email.lower()
-        create_user_model.username = create_user.username
-        create_user_model.is_active = create_user.is_active
-        create_user_model.hashed_password = get_password_hashed(create_user.password)
-        create_user_model.is_admin = create_user.is_admin
-        print_message(f"Creating user: {create_user_model.email}, {create_user_model.username}")
-        db.add(create_user_model)
-        
-        try:
-            db.commit()
-            print_message(f'User {create_user_model.email} created successfully')
-            if create_user.is_admin:
-                add_admin = models.UsersAdminDB()
-                add_admin.email = create_user.email.lower()
-                db.add(add_admin)
-                db.commit()
-        except exc.IntegrityError:
-            db.rollback()
-            print_message("User already exist")
-            raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
-        except FlushError:
-            db.rollback()
-            print_message(f"User already exist")
-            raise HTTPException(status_code=400, detail=f"The user {create_user_model.email} already exist")
-        
-        
-        new_credit = models.CreditsDB()
-        new_credit.email = create_user_model.email
-        db.add(new_credit)
-        
-        try:
-            db.commit()
-            print_message(f'Credits for user {create_user_model.email} created successfully')
-        except exc.IntegrityError:
-            db.rollback()
-            db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
-            db.commit()
-            print_message(f"Failed to create credits for the user {create_user_model.email}")
-            raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
-        except FlushError:
-            db.rollback()
-            db.query(models.UsersDB).filter(models.UsersDB.email == create_user_model.email).delete()
-            db.commit()
-            print_message(f"Failed to create credits for the user {create_user_model.email}")
-            raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {create_user_model.email}")
-
-        return {"message": f"User {create_user.username} created successfully"}
-    
     # def update_credits(self, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
     #     if not auth:
     #         raise exceptions.get_user_exception()

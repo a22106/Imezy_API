@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from .database import engine, SessionLocal
 from . import models
-from .auth import verify_password, get_password_hashed
+from .auths import verify_password, get_password_hashed
 # from .models import CreditsHistoryDB, CreditsDB
 from .models import CreditsDB, UpdateCreditsRequest
 from datetime import datetime

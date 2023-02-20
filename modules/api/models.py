@@ -302,6 +302,7 @@ class CreateUserResponse(BaseModel):
     password: str = Field(title="Password")
     is_active: bool = Field(True, title="Is Active")
     is_admin: bool = Field(False, title="Is Admin")
+    type: str = Field("normal", title="User Type (normal, kakao)")
 
 class JWTResponse(BaseModel):
     access_token: str = Field(title="Access Token")
@@ -392,12 +393,21 @@ class UsersDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
+    email_kakao = Column(String, unique=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_date = Column(DateTime, default=datetime.now)
     profile_image = Column(String, default=None)
+    
+class UsersKakaoDB(Base):
+    __tablename__ = "users_kakao"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False)
+    email_kakao = Column(String, nullable=False)
+
 
 class CreditsDB(Base):
     __tablename__ = "credits"
@@ -534,7 +544,8 @@ class PresetsDB(Base):
     subject = Column(String, default="person")
     gen = Column(String, default="t2i")
     hide = Column(Boolean, default=False)
-    
+
+
 class MemoryResponse(BaseModel):
     ram: dict = Field(title="RAM", description="System memory stats")
     cuda: dict = Field(title="CUDA", description="nVidia CUDA memory stats")

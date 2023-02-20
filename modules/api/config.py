@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_HOURS: int
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int
     
-    # API key config
-    KAKAO_REST_API_KEY: str
-    CLIENT_SECRET: str
+    # kakao api keys
+    KAKAO_RESTAPI_KEY: str
+    KAKAO_CLIENT_SECRET: str
     
     # email config
     EMAIL_ADMIN_HOST: str
