@@ -31,87 +31,47 @@ REFRESH_TOKEN_EXPIRES = timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def access_token_auth(token: str = Depends(oauth2_bearer)):
-    decoded_token = jwt.decode(token, algorithms=[ALGORITHM_ACCESS], verify=False)
+def access_token_auth(token: str = Depends(oauth2_bearer), user_type = "normal"):
     
-    if 'iss' in decoded_token and decoded_token['iss'] == 'https://kauth.kakao.com':
-        """토큰 검증
-        1. ID 토큰의 영역 구분자인 온점(.)을 기준으로 헤더, 페이로드, 서명을 분리
-        2. 페이로드를 Base64 방식으로 디코딩
-        3. 페이로드의 iss 값이 https://kauth.kakao.com와 일치하는지 확인
-        4. 페이로드의 aud 값이 서비스 앱 키와 일치하는지 확인
-        5. 페이로드의 exp 값이 현재 UNIX 타임스탬프(Timestamp)보다 큰 값인지 확인(ID 토큰이 만료되지 않았는지 확인)
-        6. 페이로드의 nonce 값이 카카오 로그인 요청 시 전달한 값과 일치하는지 확인
-        7. 서명 검증
-        서명 검증은 다음 순서로 진행합니다.
-
-        1. 헤더를 Base64 방식으로 디코딩
-        2. OIDC: 공개키 목록 조회하기를 통해 카카오 인증 서버가 서명 시 사용하는 공개키 목록 조회
-        3. 공개키 목록에서 헤더의 kid에 해당하는 공개키 값 확인
-        - 공개키는 일정 기간 캐싱(Caching)하여 사용할 것을 권장하며, 지나치게 빈번한 요청 시 요청이 차단될 수 있으므로 유의
-        4. JWT 서명 검증을 지원하는 라이브러리를 사용해 공개키로 서명 검증
-        참고: OpenID Foundation, jwt.io
-        라이브러리를 사용하지 않고 직접 서명 검증 구현 시, RFC7515 규격에 따라 서명 검증 과정 진행 가능"""
-        #check decoded_token is equal to settings.KAKAO_RESTAPI_KEY
-        if decoded_token['aud'] != settings.KAKAO_RESTAPI_KEY:
-            print_message("aud is not equal to KAKAO_RESTAPI_KEY")
-            raise exceptions.get_jwt_exception("aud is not equal to KAKAO_RESTAPI_KEY")
-        if decoded_token['exp'] < datetime.now().timestamp():
-            print_message("token is expired")
-            raise exceptions.get_jwt_exception("token is expired")
-        
-        # if the token is valid, check the user is in the database
-        email = decoded_token['kakao_account']['email']
-        username = decoded_token['kakao_account']['profile']['nickname']
-        db = next(get_db())
-        if (kakao_user_db := db.query(models.UsersKakaoDB).filter(models.UsersKakaoDB.email_kakao == email_kakao).first()) is None:
-            # users_kakao DB에 추가
-            new_kakao_user = models.UserDB(email=email, email_kakao = email, username=username)
-            db.add(new_kakao_user)
-            db.commit()
-            db.refresh(new_kakao_user) #
-            # users DB에도 추가
-            new_user ={
-                "username": username,
-                "email": email,
-                "password": None,
-                "is_active": True,
-                "is_admin": False,
-            }
-            users.create_user(db, new_user)
+    if user_type == "normal":
+        try:
+            payload = jwt.decode(token, SECRET_KEY_ACCESS, algorithms=[ALGORITHM_ACCESS])
+            print(f"email: {payload.get('email')}, user_id: {payload.get('user_id')}, connected")
+            t_type: str = payload.get("type")
             
-            user_id = new_kakao_user.id
-            email = new_kakao_user.email
-            t_type = "kakao_access"
+            email: str = payload.get("email")
+            user_id: int = payload.get("user_id")
             
-            return {"email": email, "user_id": user_id, "type": t_type}
-        else:
-            user_id = kakao_user_db.id
-            email = kakao_user_db.email
-            t_type = "kakao_access"
-            return {"email": email, "user_id": user_id, "type": t_type}
-    
-    try:
-        payload = jwt.decode(token, SECRET_KEY_ACCESS, algorithms=[ALGORITHM_ACCESS])
-        print(f"email: {payload.get('email')}, user_id: {payload.get('user_id')}, connected")
-        t_type: str = payload.get("type")
+            if email is None or user_id is None: # 키가 잘못된 경우
+                print("get_current_user: email or user_id is None")
+                raise exceptions.get_user_exception()
+            
+            return {"email": email, "user_id": user_id, "type": t_type} # 토큰이 유효한 경우
         
-        email: str = payload.get("email")
-        user_id: int = payload.get("user_id")
+        except ExpiredSignatureError: # 토큰이 만료된 경우
+            print("Access token is expired")
+            raise exceptions.access_token_expired_exception()
         
-        if email is None or user_id is None: # 키가 잘못된 경우
-            print("get_current_user: email or user_id is None")
-            raise exceptions.get_user_exception()
+        except JWTError: # 토큰이 유효하지 않은 경우
+            print_message("Access token is invalid")
+            raise exceptions.get_jwt_exception()
+    elif user_type == "kakao":
+        url = "https://kapi.kakao.com/v2/user/me" # 카카오 API에서 유저 정보 가져오기
+        header = {"Authorization": f"Bearer {token}"}
+        response = requests.get(url, headers=header).json()
+        try:
+            username = response['kakao_account']['profile']['nickname']
+            email_kakao = response['kakao_account']['email']
+            db = next(get_db())
+            email = db.query(models.UsersDB) \
+                .filter(models.UsersDB.email_kakao == email_kakao).first().email
+        except KeyError:
+            auth = response
+            return auth
         
-        return {"email": email, "user_id": user_id, "type": t_type} # 토큰이 유효한 경우
-    
-    except ExpiredSignatureError: # 토큰이 만료된 경우
-        print("Access token is expired")
-        raise exceptions.access_token_expired_exception()
-    
-    except JWTError: # 토큰이 유효하지 않은 경우
-        print_message("Access token is invalid")
-        raise exceptions.get_jwt_exception()
+        auth = {"email": email, "username": username, "user_type" : user_type, "type": "kakao_access"}
+        return auth
+        
     
     
 def refresh_token_auth(token: str = Depends(oauth2_bearer)):
@@ -167,7 +127,6 @@ def kakaologin_access(token: str = Depends(oauth2_bearer)):
     url = "https://kapi.kakao.com/v2/user/me"
     header = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=header).json()
-    print(response)
     try:
         username = response['kakao_account']['profile']['nickname']
         email = response['kakao_account']['email']
@@ -245,12 +204,7 @@ def authenticated_access_token_check(auth: dict, db: Session = None, verify: boo
     '''
     
     if auth.get('type') == 'kakao_access':
-        db = next(get_db())
-        if db.query(models.UsersKakaoDB).filter(models.UsersKakaoDB.email == auth['email']).first() is None:
-            print("User is not in database")
-            raise exceptions.get_user_exception()
-        else:
-            return True
+        return True
     
     # 유저가 데이터베이스에 있는지 확인
     if db:

@@ -601,11 +601,16 @@ class Api:
             return user_info
         raise exceptions.get_user_not_found_exception()
 
-    def read_user_info(self, auth: dict = Depends(access_token_auth),
+    def read_user_info(self, user_type: str = "normal", auth: dict = Depends(access_token_auth),
                         db: Session = Depends(get_db)):
         authenticated_access_token_check(auth)
         
-        return users.read_user_info(auth, db)
+        if user_type == "normal":
+            user_info = users.read_user_info(auth)
+        elif user_type == "kakao":
+            user_info = users.read_user_info_kakao(auth)
+        
+        return user_info
 
     def authenticate_user(self, email, password, db):
         user_db = db.query(models.UsersDB)\
@@ -652,14 +657,13 @@ class Api:
         
     def kakaologin(self, db: Session = Depends(get_db), auth: dict = Depends(kakaologin_access)):
         if 'email_kakao' not in auth.keys(): # 카카오 로그인 실패
-                raise exceptions.kakao_login_exception(auth)
+            raise exceptions.kakao_login_exception(auth)
 
         # 카카오 유저 정보 (email: "123@kakao.com",  "username": "kakao123")
-        
-        if (kakao_user_db := db.query(models.UsersKakaoDB) \
-            .filter(models.UsersKakaoDB.email_kakao == auth["email_kakao"]).first()) is None: # 카카오 유저가 등록되지 않은 경우 신규 등록 후 로그인
+        if (users_db := db.query(models.UsersDB) \
+            .filter(models.UsersDB.email_kakao == auth["email_kakao"]).first()) is None: # 카카오 유저가 등록되지 않은 경우 신규 등록 후 로그인
             
-            users.create_user_kakao(auth)
+            users.create_user_kakao(auth) # 카카오 table에 유저 정보 저장
             
             new_user = {
                 "username": auth["username"],
@@ -669,21 +673,15 @@ class Api:
                 "is_admin": False,
                 "type": "kakao",
             }
-            print(f"create new user: {new_user}")
-            users.create_user(new_user)
+            print_message(f"create new user: {new_user}")
+            users.create_user(new_user) # 신규 유저 정보 저장
+        auth['email'] = users_db.email 
+        print_message(f"Logined user info: {auth}") 
+        # auth == {"email": users_db.email, "email_kakao": users_db.email_kakao, "username": users_db.username}
+        user_info = users.read_user_info_kakao(auth)
+        return user_info
         
-        print(f"auth info: {auth}")
-        user_db = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email_kakao"]).first()
-        credits_db = db.query(models.CreditsDB).filter(models.CreditsDB.email == user_db.email).first()
-        return {
-                "detail": "kakao login success",
-                "id": user_db.id,
-                "username": auth["username"],
-                "email": user_db.email,
-                "created_date": user_db.created_date,
-                "credits": credits_db.credits,
-                "verified": True,
-            } 
+        
             
     def kakaologin_refresh(self, auth: dict = Depends(kakao_refresh)):
         return auth
@@ -1331,6 +1329,5 @@ class Api:
         return response
     
     def presets_read(self, db: Session = Depends(get_db)):
-        print_message("Reading presets")
         response = styles.read_presets(db)
         return response

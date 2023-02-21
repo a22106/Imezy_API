@@ -408,7 +408,6 @@ class UsersKakaoDB(Base):
     username = Column(String, nullable=False)
     email_kakao = Column(String, nullable=False)
 
-
 class CreditsDB(Base):
     __tablename__ = "credits"
     
@@ -423,7 +422,6 @@ class UsersAdminDB(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, ForeignKey("users.email"))
-    
     
 class RefreshTokenDB(Base):
     __tablename__ = "r_token"

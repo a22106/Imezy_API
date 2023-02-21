@@ -180,11 +180,8 @@ def create_user(new_user):
 
     return {"message": f'User {new_user["username"]} created successfully'}
 
-def read_user_info(auth: dict, db: Session):
-    # # read kakao user info
-    # if auth["t_type"] == "kakao_access":
-    #     user_info = db
-    
+def read_user_info(auth: dict):
+    db = next(get_db())
     # Get user info from database.
     try:
         user_info = db.query(models.UsersDB).filter(models.UsersDB.email == auth["email"]).first().__dict__
@@ -208,3 +205,29 @@ def read_user_info(auth: dict, db: Session):
         user_info['verified'] = verified_db.verified
     print_message(f'Read user info: {user_info["email"]}')
     return user_info
+
+def read_user_info_kakao(auth: dict) -> dict:
+    db = next(get_db())
+    
+    try:
+        user_db = db.query(models.UsersDB) \
+            .filter(models.UsersDB.email == auth["email"]).first()
+        credits_db = db.query(models.CreditsDB) \
+            .filter(models.CreditsDB.email == auth["email"]).first()
+    except AttributeError: # User not found
+        raise HTTPException(status_code=404, detail=f"User not found with email {auth['email_kakao']}")
+    except Exception as e: # 내부 서버 오류
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+    
+    user_info = {
+            "detail": "kakao login success",
+            "id": user_db.id,
+            "username": auth["username"],
+            "email": user_db.email,
+            "created_date": user_db.created_date,
+            "credits": credits_db.credits,
+            "verified": True,
+        }
+        
+    return user_info
+        
