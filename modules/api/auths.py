@@ -224,8 +224,9 @@ def authenticated_access_token_check(auth: dict, db: Session = None, verify: boo
     if auth is None:
         print("User is not authenticated")
         raise exceptions.get_user_exception()
-    if auth['type'] == 'refresh':
+    if 'type' in auth.keys() and auth['type'] == 'refresh':
         return False
+    
     return True
 
 def get_password_hashed(password):
