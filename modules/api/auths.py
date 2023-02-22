@@ -32,21 +32,22 @@ oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def access_token_auth(token: str = Depends(oauth2_bearer), user_type = "normal"):
+    db = next(get_db())
     
     if user_type == "normal":
         try:
             payload = jwt.decode(token, SECRET_KEY_ACCESS, algorithms=[ALGORITHM_ACCESS])
             print(f"email: {payload.get('email')}, user_id: {payload.get('user_id')}, connected")
             t_type: str = payload.get("type")
-            
             email: str = payload.get("email")
             user_id: int = payload.get("user_id")
+            username: str = db.query(models.UsersDB).filter(models.UsersDB.id == user_id).first().username
             
             if email is None or user_id is None: # 키가 잘못된 경우
                 print("get_current_user: email or user_id is None")
                 raise exceptions.get_user_exception()
             
-            return {"email": email, "user_id": user_id, "type": t_type} # 토큰이 유효한 경우
+            return {"email": email, "user_id": user_id, "type": t_type, "user_type": user_type} # 토큰이 유효한 경우
         
         except ExpiredSignatureError: # 토큰이 만료된 경우
             print("Access token is expired")
@@ -55,21 +56,25 @@ def access_token_auth(token: str = Depends(oauth2_bearer), user_type = "normal")
         except JWTError: # 토큰이 유효하지 않은 경우
             print_message("Access token is invalid")
             raise exceptions.get_jwt_exception()
+        
     elif user_type == "kakao":
         url = "https://kapi.kakao.com/v2/user/me" # 카카오 API에서 유저 정보 가져오기
         header = {"Authorization": f"Bearer {token}"}
         response = requests.get(url, headers=header).json()
         try:
-            username = response['kakao_account']['profile']['nickname']
+            user_db = db.query(models.UsersDB).filter(models.UsersDB.email_kakao == response['kakao_account']['email']).first()
+            username = response['kakao_account']['profile']['nickname'] if user_db.username is None else user_db.username
             email_kakao = response['kakao_account']['email']
-            db = next(get_db())
-            email = db.query(models.UsersDB) \
-                .filter(models.UsersDB.email_kakao == email_kakao).first().email
+            email = response['kakao_account']['email'] if user_db.email is None else user_db.email
+            user_id = user_db.id
         except KeyError:
             auth = response
             return auth
+        except AttributeError:
+            return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                 detail=f"Kakao login failed. The user '{email_kakao}' is not registered.")
         
-        auth = {"email": email, "username": username, "user_type" : user_type, "type": "kakao_access"}
+        auth = {"email": email, "username": username, "user_type" : user_type, "type": "kakao_access", "email_kakao": email_kakao, "user_id": user_id}
         return auth
         
     
