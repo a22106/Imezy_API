@@ -675,13 +675,14 @@ class Api:
             }
             print_message(f"create new user: {new_user}")
             users.create_user(new_user) # 신규 유저 정보 저장
-        auth['email'] = users_db.email 
-        print_message(f"Logined user info: {auth}") 
+            verified_message = users.verify_user(new_user["email"]) # 신규 유저 이메일 인증
+            print(verified_message["message"])
+        print_message(f"Logined user info: {auth['email_kakao']}") 
         # auth == {"email": users_db.email, "email_kakao": users_db.email_kakao, "username": users_db.username}
+        auth["email"] = auth["email_kakao"]
         user_info = users.read_user_info_kakao(auth)
+        print(user_info)
         return user_info
-        
-        
             
     def kakaologin_refresh(self, auth: dict = Depends(kakao_refresh)):
         return auth
@@ -824,7 +825,7 @@ class Api:
 
         return TextToImageResponse(images=b64images, images_compressed=b64images_compressed, parameters=vars(txt2imgreq), info=json.loads(processed.js()))
 
-    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db)):
+    def text2imgapi_auth(self, txt2imgreq: StableDiffusionTxt2ImgProcessingAPI, auth: dict = Depends(access_token_auth), db: Session = Depends(get_db), user_type: str = "normal"):
         authenticated_access_token_check(auth, db=db, verify=True)
         print_message(f"User {auth['email']} is generating images txt2imgapi_auth")
         

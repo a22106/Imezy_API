@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-from .database import engine, SessionLocal
+from .database import get_db
 from . import models
 from .auths import verify_password, get_password_hashed
 # from .models import CreditsHistoryDB, CreditsDB
 from .models import CreditsDB, UpdateCreditsRequest
 from datetime import datetime
+from .logs import print_message
+from sqlalchemy import exc
+from fastapi import HTTPException
 
 from sqlalchemy.orm import Session
 
@@ -61,3 +64,36 @@ def update_cred(owner_email: str, cred_inc: int, db: Session):
         return -1
     
     return current_cred_db.credits
+
+def create_new_credit_db(owner_email: str):
+    ''' Create a new credit database for a user.
+    args:
+        owner_email: The user to create a new credit database.
+    '''
+    db = next(get_db())
+    
+    # 신규 유저 생성시, 기본적으로 1000 credits를 부여한다.
+    new_credit = models.CreditsDB()
+    new_credit.email = owner_email
+    db.add(new_credit)
+    
+    try:
+        db.commit()
+        print_message(f'Credits for user {owner_email} created successfully')
+    except exc.IntegrityError as e:
+        db.rollback()
+        db.query(models.UsersDB) \
+            .filter(models.UsersDB.email == owner_email).delete()
+        db.commit()
+        print_message(f"Failed to create credits for the user {owner_email}")
+        raise HTTPException(status_code=400, detail=f"Failed to create credits for the user {owner_email}, Error: {e}")
+    except Exception as e:
+        db.rollback()
+        db.query(models.UsersDB) \
+            .filter(models.UsersDB.email == owner_email).delete()
+        db.commit()
+        print_message(f"Failed to create credits for the user {owner_email}, Error: {e}")
+        raise HTTPException(status_code=400, 
+                            detail=f"Failed to create credits for the user {owner_email}, Error: {e}")
+    
+    return new_credit

@@ -413,7 +413,7 @@ class CreditsDB(Base):
     
     # id is foreign key from users table
     id = Column(Integer, primary_key=True, index=True)
-    credits = Column(Integer, default=200)
+    credits = Column(Integer, default=1000)
     updated = Column(DateTime, default=datetime.now)
     email = Column(String, ForeignKey("users.email"))
     
